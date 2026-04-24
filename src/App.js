@@ -131,13 +131,13 @@ export default function App() {
   const handleAddLog = async (formData) => {
     if (!user) return;
     try {
+      // 1. บันทึกลงฐานข้อมูลหลัก
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs'), {
         ...formData,
         timestamp: new Date().toISOString()
       });
 
-      // ระบบ Webhook นี้จะส่งไปที่ Google Apps Script 
-      // ซึ่ง Script ปลายทางต้องมีคำสั่ง MailApp.sendEmail เพื่อส่งอีเมล
+      // 2. ส่ง Webhook ไปยัง Google Sheets (รวมถึงส่งแจ้งเตือนอีเมลที่ฝั่ง Script ปลายทาง)
       if (GOOGLE_SHEETS_WEBHOOK_URL && GOOGLE_SHEETS_WEBHOOK_URL !== "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL") {
         const isPassed = (parseFloat(formData.ph) >= STANDARDS.ph.min && parseFloat(formData.ph) <= STANDARDS.ph.max && parseFloat(formData.tds) <= STANDARDS.tds.max);
         
@@ -163,7 +163,7 @@ export default function App() {
   };
 
   const handleTabChange = (tabId) => {
-    // ล็อคเฉพาะหน้ารายงานและตั้งค่า
+    // ล็อกเฉพาะหน้ารายงานรายเดือน และ ตั้งค่าผู้ใช้งาน
     if ((tabId === 'report' || tabId === 'settings') && !isAuthorized) {
       setPendingTab(tabId);
       setShowPasswordInput(true);
@@ -234,7 +234,7 @@ export default function App() {
 
         <div className="p-6 bg-blue-950/40 text-[10px] text-blue-400 border-t border-blue-900/50 italic flex justify-between items-center">
           <span>UID: {user?.uid ? user.uid.substring(0, 8) + '...' : 'Auth...'}</span>
-          {isAuthorized && <button onClick={() => setIsAuthorized(false)} className="hover:text-white transition-colors"><Lock size={12}/></button>}
+          {isAuthorized && <button onClick={() => setIsAuthorized(false)} title="Logout from Admin" className="hover:text-white transition-colors"><Lock size={12}/></button>}
         </div>
       </aside>
 
@@ -247,7 +247,7 @@ export default function App() {
       {showPasswordInput && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-4">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
-            <div className="w-16 h-16 bg-blue-50 text-[#002D62] rounded-full flex items-center justify-center mb-6 mx-auto">
+            <div className="w-16 h-16 bg-blue-50 text-[#002D62] rounded-full flex items-center justify-center mb-6 mx-auto shadow-inner">
               <Lock size={32} />
             </div>
             <h3 className="text-xl font-bold text-center text-gray-800 mb-2">พื้นที่ส่วนบุคคล</h3>
@@ -261,8 +261,8 @@ export default function App() {
                 placeholder="ระบุรหัสผ่าน"
                 className={`w-full p-4 text-center text-2xl tracking-[1em] rounded-2xl border-2 outline-none transition-all ${passError ? 'border-red-500 bg-red-50' : 'border-gray-100 bg-gray-50 focus:border-[#002D62]'}`}
               />
-              {passError && <p className="text-red-500 text-xs text-center font-bold">รหัสผ่านไม่ถูกต้อง ลองอีกครั้ง</p>}
-              <div className="flex gap-3">
+              {passError && <p className="text-red-500 text-xs text-center font-bold">รหัสผ่านไม่ถูกต้อง</p>}
+              <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowPasswordInput(false)} className="flex-1 py-3 text-sm font-bold text-gray-400">ยกเลิก</button>
                 <button type="submit" className="flex-1 py-3 bg-[#002D62] text-white rounded-xl font-bold shadow-lg">ยืนยัน</button>
               </div>
@@ -283,11 +283,14 @@ export default function App() {
 
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          body { background: white; }
+          body { background: white !important; }
           .print-hidden { display: none !important; }
           .print-only { display: block !important; }
           @page { margin: 1cm; }
         }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #002D62; border-radius: 10px; }
       `}} />
     </div>
   );
@@ -357,11 +360,11 @@ function Dashboard({ logs, period, setPeriod, isConnected }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         <StatCard title="ผ่านมาตรฐานทั้งหมด" value={stats.passedTotal} total={stats.total} icon={<CheckCircle2 className="text-green-500" />} color="border-[#002D62]" />
-        <StatCard title="ไม่ผ่านเกณฑ์เดือนนี้" value={stats.failedThisMonth} isAlert={stats.failedThisMonth > 0} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
+        <StatCard title="ตกเกณฑ์ในเดือนนี้" value={stats.failedThisMonth} isAlert={stats.failedThisMonth > 0} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
         <StatCard 
           title="ความพร้อมใช้งาน" 
           value={isConnected ? "พร้อม" : "กำลังเชื่อมต่อ"} 
-          description="สถานะการเชื่อมต่อฐานข้อมูล"
+          description="สถานะการเชื่อมต่อฐานข้อมูลแบบ Real-time"
           icon={<LayoutDashboard className={isConnected ? "text-green-500" : "text-amber-500 animate-pulse"} />} 
           color="border-[#B8904F]" 
         />
@@ -385,7 +388,7 @@ function StatCard({ title, value, total, isAlert, icon, color, description }) {
             <span className="text-3xl md:text-4xl font-black text-gray-800 leading-none">{value}</span>
             {total !== undefined && <span className="text-gray-400 text-sm">/ {total}</span>}
           </div>
-          {description && <p className="text-[10px] text-gray-400 mt-2 italic">{description}</p>}
+          {description && <p className="text-[10px] text-gray-400 mt-2 italic leading-tight">{description}</p>}
         </div>
         <div className="bg-slate-50 p-3 rounded-xl h-fit">{icon}</div>
       </div>
@@ -493,11 +496,11 @@ function ReportView({ logs }) {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-gray-100 print:bg-gray-100 print:border-gray-300">
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-black">วันที่</th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-black">โครงการ / จุดเก็บ</th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">pH</th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">TDS</th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">สถานะ</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-black whitespace-nowrap">วันที่</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-black whitespace-nowrap">ตำแหน่ง / จุดเก็บ</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black whitespace-nowrap">pH</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black whitespace-nowrap">TDS</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black whitespace-nowrap">สถานะ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 print:divide-gray-200">
@@ -516,7 +519,7 @@ function ReportView({ logs }) {
                       <td className="p-4 text-sm text-center font-mono print:text-black">{l.tds}</td>
                       <td className="p-4 text-center">
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${isPassed ? 'bg-green-100 text-green-700 print:bg-transparent print:text-green-600' : 'bg-red-100 text-red-700 print:bg-transparent print:text-red-600'}`}>
-                          {isPassed ? 'ผ่าน' : 'ตกเกณฑ์'}
+                          {isPassed ? 'ผ่านเกณฑ์' : 'ตกเกณฑ์'}
                         </span>
                       </td>
                     </tr>
@@ -528,13 +531,13 @@ function ReportView({ logs }) {
         </div>
       </div>
 
-      <div className="hidden print:block mt-12 grid grid-cols-2 gap-20">
+      <div className="hidden print:block mt-16 grid grid-cols-2 gap-20">
         <div className="text-center">
-          <p className="mb-16 italic text-gray-400">ลงชื่อ......................................................</p>
+          <p className="mb-20 italic text-gray-300">ลงชื่อ......................................................</p>
           <p className="font-bold">( ผู้จัดทำรายงาน )</p>
         </div>
         <div className="text-center">
-          <p className="mb-16 italic text-gray-400">ลงชื่อ......................................................</p>
+          <p className="mb-20 italic text-gray-300">ลงชื่อ......................................................</p>
           <p className="font-bold">( ผู้ตรวจสอบ / อนุมัติ )</p>
         </div>
       </div>
@@ -560,7 +563,7 @@ function EntryForm({ onSubmit, staffNames }) {
   const validate = (name, val) => {
     let msg = "";
     const num = parseFloat(val);
-    if (name === 'ph' && (num < STANDARDS.ph.min || num > STANDARDS.ph.max)) msg = `อยู่นอกเกณฑ์ (5.5 - 9.0)`;
+    if (name === 'ph' && (num < STANDARDS.ph.min || num > STANDARDS.ph.max)) msg = `ไม่อยู่ในเกณฑ์ (5.5 - 9.0)`;
     if (name === 'tds' && num > STANDARDS.tds.max) msg = `เกินเกณฑ์ (1,000 mg/L)`;
     setAlerts(prev => ({ ...prev, [name]: msg }));
   };
@@ -593,7 +596,7 @@ function EntryForm({ onSubmit, staffNames }) {
             <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3">
               <PlusCircle size={28} className="text-[#B8904F]" /> บันทึกผลการตรวจคุณภาพน้ำ
             </h2>
-            <p className="text-blue-200 mt-1 opacity-80 text-xs md:text-sm">บันทึกค่าพารามิเตอร์หลักและส่งแจ้งเตือนอัตโนมัติ</p>
+            <p className="text-blue-200 mt-1 opacity-80 text-xs md:text-sm">บันทึกค่าพารามิเตอร์และส่งแจ้งเตือนทางอีเมลอัตโนมัติ</p>
           </div>
           <ClipboardList size={48} className="opacity-20 hidden sm:block" />
         </div>
@@ -603,8 +606,8 @@ function EntryForm({ onSubmit, staffNames }) {
             <FormField label="วันที่ตรวจสอบ">
               <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-medium" required />
             </FormField>
-            <FormField label="ตำแหน่ง / โครงการ">
-              <input type="text" name="location" value={formData.location} onChange={handleChange} placeholder="ระบุจุดที่เก็บตัวอย่าง" className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-medium" required />
+            <FormField label="จุดที่เก็บ / โครงการ">
+              <input type="text" name="location" value={formData.location} onChange={handleChange} placeholder="ระบุตำแหน่งที่บันทึก" className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-medium" required />
             </FormField>
             <FormField label="เจ้าหน้าที่ผู้ตรวจ">
               <select name="recorder" value={formData.recorder} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-bold">
@@ -614,10 +617,10 @@ function EntryForm({ onSubmit, staffNames }) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 bg-blue-50/40 p-6 md:p-8 rounded-3xl border border-blue-100 shadow-inner">
-            <FormField label={`ค่า pH (${STANDARDS.ph.min} - ${STANDARDS.ph.max})`} alert={alerts.ph}>
+            <FormField label={`ค่า pH (เกณฑ์ 5.5 - 9.0)`} alert={alerts.ph}>
               <input type="number" step="0.1" name="ph" value={formData.ph} onChange={handleChange} className={`w-full p-4 rounded-2xl border transition-all text-xl font-black shadow-sm ${alerts.ph ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white focus:ring-2 focus:ring-[#002D62]'}`} required />
             </FormField>
-            <FormField label={`ค่า TDS (ไม่เกิน ${STANDARDS.tds.max} mg/L)`} alert={alerts.tds}>
+            <FormField label={`ค่า TDS (เกณฑ์ไม่เกิน 1,000 mg/L)`} alert={alerts.tds}>
               <input type="number" name="tds" value={formData.tds} onChange={handleChange} className={`w-full p-4 rounded-2xl border transition-all text-xl font-black shadow-sm ${alerts.tds ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white focus:ring-2 focus:ring-[#002D62]'}`} required />
             </FormField>
           </div>
@@ -628,25 +631,25 @@ function EntryForm({ onSubmit, staffNames }) {
           </div>
 
           <button type="submit" className="w-full bg-[#002D62] hover:bg-[#003d82] text-white py-5 rounded-2xl font-black text-lg md:text-xl shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3">
-            <CheckCircle2 size={24} /> บันทึกข้อมูลลงระบบ
+            <CheckCircle2 size={24} /> ยืนยันการบันทึก
           </button>
         </form>
       </div>
 
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-6 mx-auto shadow-inner">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 border-t-8 border-red-500">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 mx-auto shadow-inner">
               <AlertCircle size={32} />
             </div>
-            <h3 className="text-2xl font-bold text-center text-gray-800 mb-2">ข้อมูลไม่ผ่านเกณฑ์มาตรฐาน</h3>
+            <h3 className="text-2xl font-bold text-center text-gray-800 mb-2">ตรวจพบค่าที่ตกเกณฑ์</h3>
             <p className="text-center text-gray-600 mb-8 leading-relaxed">
-              ค่าคุณภาพน้ำที่ระบุ <strong className="text-red-500">อยู่นอกเกณฑ์มาตรฐานที่กำหนด</strong><br/>
-              ยืนยันที่จะบันทึกค่าที่พบจริงนี้ใช่หรือไม่?
+              ค่าคุณภาพน้ำที่ระบุ <strong className="text-red-500">อยู่นอกเกณฑ์มาตรฐาน</strong><br/>
+              ยืนยันการบันทึกข้อมูลเพื่อส่งแจ้งเตือนใช่หรือไม่?
             </p>
             <div className="flex gap-4">
-              <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors">ย้อนกลับ</button>
-              <button onClick={confirmSubmit} className="flex-1 py-3.5 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg transition-colors">ยืนยันบันทึก</button>
+              <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors border">ยกเลิก</button>
+              <button onClick={confirmSubmit} className="flex-1 py-3.5 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg transition-all">ยืนยันบันทึก</button>
             </div>
           </div>
         </div>
@@ -671,7 +674,7 @@ function RadioBox({ label, name, options, value, onChange }) {
       <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest">{label}</label>
       <div className="grid grid-cols-3 gap-2">
         {options.map(opt => (
-          <label key={opt} className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 cursor-pointer transition-all ${value === opt ? 'bg-[#002D62] border-[#002D62] text-white shadow-lg' : 'bg-white border-gray-100 text-gray-400 hover:border-blue-200 hover:text-blue-500'}`}>
+          <label key={opt} className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 cursor-pointer transition-all ${value === opt ? 'bg-[#002D62] border-[#002D62] text-white shadow-lg scale-105' : 'bg-white border-gray-100 text-gray-400 hover:border-blue-200 hover:text-blue-500'}`}>
             <input type="radio" name={name} value={opt} checked={value === opt} onChange={onChange} className="hidden" />
             <span className="text-[11px] md:text-sm font-bold text-center leading-tight">{opt}</span>
           </label>
@@ -713,8 +716,8 @@ function SettingsView({ settings, onUpdateStaff }) {
             <AlertCircle size={20}/> ข้อมูลทางเทคนิค
           </h3>
           <p className="text-blue-100 text-xs md:text-sm opacity-90 leading-relaxed">
-            ระบบตรวจสอบค่าตามมาตรฐานควบคุมการระบายน้ำทิ้งจากอาคารบางประเภทและบางขนาด (ประเภท ก.) <br className="hidden md:block"/>
-            ค่า pH ต้องอยู่ระหว่าง 5.5 - 9.0 และ TDS ต้องไม่เกิน 1,000 mg/L (หรือตามที่ระบุในรายงาน EIA)
+            เกณฑ์มาตรฐาน: pH 5.5 - 9.0 และ TDS {'<'} 1,000 mg/L <br className="hidden md:block"/>
+            รหัสผ่านสำหรับเข้าถึงพื้นที่ส่วนบุคคลปัจจุบันคือ <span className="font-bold underline text-white">1312</span>
           </p>
         </div>
         <div className="absolute -bottom-10 -right-10 opacity-5">
