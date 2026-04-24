@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -473,7 +474,7 @@ function ReportView({ logs }) {
   );
 }
 
-// --- Entry Form Component (Updated to only pH, TDS, Color, Odor) ---
+// --- Entry Form Component ---
 function EntryForm({ onSubmit, staffNames }) {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -545,7 +546,7 @@ function EntryForm({ onSubmit, staffNames }) {
             </FormField>
           </div>
 
-          {/* Section 2: Core Parameters (Simplified) */}
+          {/* Section 2: Core Parameters */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-blue-50/30 p-8 rounded-3xl border border-blue-100">
             <FormField label={`ค่า pH (${STANDARDS.ph.min} - ${STANDARDS.ph.max})`} alert={alerts.ph}>
               <input 
@@ -582,7 +583,7 @@ function EntryForm({ onSubmit, staffNames }) {
         </form>
       </div>
 
-      {/* ป็อปอัปแจ้งเตือนแบบกำหนดเอง สำหรับยืนยันการบันทึกค่าที่ไม่ผ่านเกณฑ์ */}
+      {/* ป็อปอัปแจ้งเตือนแบบกำหนดเอง */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
