@@ -175,25 +175,33 @@ export default function App() {
     }
   };
 
-  // ฟังก์ชันนำเข้าข้อมูลจำนวนมาก (แก้ไขใหม่: ให้ทยอยส่งพร้อม Delay ป้องกันการค้าง)
+  // ฟังก์ชันนำเข้าข้อมูลจำนวนมาก (แก้ไขระบบ Batch และใส่ Timeout ป้องกันการค้าง)
   const handleImportData = async (importedLogs, onProgress) => {
     if (!user || importedLogs.length === 0) return false;
     try {
       const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs');
       let current = 0;
       
-      // ส่งทีละ 25 รายการ เพื่อความเสถียร
-      const CHUNK_SIZE = 25; 
+      // ส่งทีละ 50 รายการ เพื่อไม่ให้ฐานข้อมูลมองว่าเป็นสแปม
+      const CHUNK_SIZE = 50; 
       
       for (let i = 0; i < importedLogs.length; i += CHUNK_SIZE) {
         const chunk = importedLogs.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
         
-        // ใช้ Promise.all เพื่อส่ง request เล็กๆ พร้อมกัน
-        const promises = chunk.map(log => 
-          addDoc(logsRef, { ...log, timestamp: new Date().toISOString() })
-        );
-        
-        await Promise.all(promises);
+        chunk.forEach(log => {
+          const newDocRef = doc(logsRef);
+          batch.set(newDocRef, {
+            ...log,
+            timestamp: new Date().toISOString()
+          });
+        });
+
+        // บังคับหยุดการทำงาน (Timeout) หาก Firebase ไม่ตอบสนองเกิน 15 วินาที
+        await Promise.race([
+          batch.commit(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 15000))
+        ]);
         
         current += chunk.length;
         
@@ -202,14 +210,14 @@ export default function App() {
           onProgress(Math.min(current, importedLogs.length), importedLogs.length);
         }
         
-        // พักการทำงาน 0.3 วินาที ให้เบราว์เซอร์หายใจ ป้องกันอาการนิ่ง/ค้าง
+        // พักการทำงาน 0.3 วินาที ให้เบราว์เซอร์ได้หายใจ ป้องกันอาการค้าง
         await new Promise(resolve => setTimeout(resolve, 300));
       }
       
       return true;
     } catch (err) {
       console.error("Import error:", err);
-      return false;
+      throw err; // โยน Error ออกไปให้ UI แจ้งเตือน
     }
   };
 
@@ -478,12 +486,14 @@ function ReportView({ logs, onImport }) {
 
         if (success) {
           setImportMessage(`นำเข้าข้อมูลสำเร็จจำนวน ${results.length} รายการ!`);
-        } else {
-          setImportMessage("ไม่สามารถนำเข้าข้อมูลได้ โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือฐานข้อมูล");
         }
       } catch (err) {
         console.error(err);
-        setImportMessage("รูปแบบไฟล์ไม่ถูกต้อง หรือเกิดข้อผิดพลาดในการอ่านไฟล์");
+        if (err.message === "Timeout") {
+           setImportMessage("การนำเข้าข้อมูลล้มเหลว (Timeout): ฐานข้อมูลไม่ตอบสนอง กรุณาลองแบ่งไฟล์ให้เล็กลง");
+        } else {
+           setImportMessage("รูปแบบไฟล์ไม่ถูกต้อง หรือเกิดข้อผิดพลาด: " + err.message);
+        }
       } finally {
         setIsImporting(false);
         setImportProgress(null);
