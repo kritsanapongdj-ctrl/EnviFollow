@@ -142,17 +142,14 @@ export default function App() {
       const phVal = parseFloat(formData.ph);
       const tdsVal = parseFloat(formData.tds);
       
-      // ตรวจสอบเงื่อนไขแจ้งเตือนพิเศษ: pH < 5 หรือ pH > 9 และ TDS > 1000
       const needsCriticalAlert = (phVal < STANDARDS.alert_ph_min || phVal > STANDARDS.alert_ph_max || tdsVal > STANDARDS.alert_tds);
       const isPassedNormal = (phVal >= STANDARDS.ph.min && phVal <= STANDARDS.ph.max && tdsVal <= STANDARDS.tds.max);
 
-      // บันทึกลง Firebase
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs'), {
         ...formData,
         timestamp: new Date().toISOString()
       });
 
-      // ส่ง Webhook
       if (GOOGLE_SHEETS_WEBHOOK_URL && GOOGLE_SHEETS_WEBHOOK_URL !== "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL") {
         try {
           await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
@@ -177,22 +174,31 @@ export default function App() {
     }
   };
 
-  // ฟังก์ชันนำเข้าข้อมูลจำนวนมาก (Batch Import)
+  // ฟังก์ชันนำเข้าข้อมูลจำนวนมาก (Batch Import - แบบแบ่งชุด)
   const handleImportData = async (importedLogs) => {
     if (!user || importedLogs.length === 0) return false;
     try {
-      const batch = writeBatch(db);
       const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs');
       
-      importedLogs.forEach(log => {
-        const newDocRef = doc(logsRef);
-        batch.set(newDocRef, {
-          ...log,
-          timestamp: new Date().toISOString()
+      // Firebase เขียนรวดเดียวได้สูงสุด 500 รายการ เราจะแบ่งชุดละ 400 เพื่อความปลอดภัย
+      const CHUNK_SIZE = 400; 
+      
+      for (let i = 0; i < importedLogs.length; i += CHUNK_SIZE) {
+        const chunk = importedLogs.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        
+        chunk.forEach(log => {
+          const newDocRef = doc(logsRef);
+          batch.set(newDocRef, {
+            ...log,
+            timestamp: new Date().toISOString()
+          });
         });
-      });
 
-      await batch.commit();
+        // รอให้เขียนเสร็จทีละชุด
+        await batch.commit();
+      }
+      
       return true;
     } catch (err) {
       console.error("Import error:", err);
@@ -417,8 +423,8 @@ function ReportView({ logs, onImport }) {
     reader.onload = async (event) => {
       try {
         const text = event.target.result;
-        // การแยกบรรทัด CSV พื้นฐาน
-        const lines = text.split('\n');
+        // รองรับการแบ่งบรรทัดทั้ง \n และ \r\n
+        const lines = text.split(/\r?\n/);
         const results = [];
         
         // ข้ามบรรทัดหัวข้อ (Header)
@@ -430,21 +436,21 @@ function ReportView({ logs, onImport }) {
           // คาดหวังรูปแบบ: วันที่, โครงการ, บ่อที่, pH, TDS, สี, กลิ่น, ผู้บันทึก
           if (cols.length >= 8) {
             results.push({
-              date: cols[0].trim(),
-              location: cols[1].trim(),
-              poolNo: cols[2].trim() || '1',
-              ph: cols[3].trim(),
-              tds: cols[4].trim(),
-              color: cols[5].trim(),
-              odor: cols[6].trim(),
-              recorder: cols[7].trim(),
+              date: cols[0].replace(/['"]/g, '').trim(),
+              location: cols[1].replace(/['"]/g, '').trim(),
+              poolNo: cols[2].replace(/['"]/g, '').trim() || '1',
+              ph: cols[3].replace(/['"]/g, '').trim(),
+              tds: cols[4].replace(/['"]/g, '').trim(),
+              color: cols[5].replace(/['"]/g, '').trim(),
+              odor: cols[6].replace(/['"]/g, '').trim(),
+              recorder: cols[7].replace(/['"]/g, '').trim(),
             });
           }
         }
 
         const success = await onImport(results);
         if (success) {
-          alert(`นำเข้าข้อมูล ${results.length} รายการสำเร็จ!`);
+          alert(`นำเข้าข้อมูล ${results.length} รายการ สำเร็จ!`);
         } else {
           alert("ไม่สามารถนำเข้าข้อมูลได้ โปรดตรวจสอบการเชื่อมต่อ");
         }
