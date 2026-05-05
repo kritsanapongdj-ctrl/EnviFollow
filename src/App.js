@@ -42,7 +42,8 @@ import {
   Menu,
   X,
   Printer,
-  Lock
+  Lock,
+  Loader2
 } from 'lucide-react';
 
 // ----------------------------------------------------------------------
@@ -72,6 +73,7 @@ const STANDARDS = {
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [authError, setAuthError] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [logs, setLogs] = useState([]);
   const [settings, setSettings] = useState({ staffNames: ['สมชาย ใจดี', 'วิชัย รักน้ำ'] });
@@ -85,16 +87,20 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [passError, setPassError] = useState(false);
 
+  // 1. ระบบ Authentication
   useEffect(() => {
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
+          // สำคัญ: ต้องเปิดใช้งาน Anonymous Auth ใน Firebase Console ก่อน
           await signInAnonymously(auth);
         }
+        setAuthError(null);
       } catch (err) {
         console.error("Auth error:", err);
+        setAuthError(err.message);
       }
     };
     initAuth();
@@ -104,21 +110,35 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 2. การดึงข้อมูลจาก Firestore
   useEffect(() => {
     if (!user) return;
 
+    // ดึงข้อมูลบันทึกคุณภาพน้ำ
     const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs');
     const unsubLogs = onSnapshot(logsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setLogs(data.sort((a, b) => new Date(b.date) - new Date(a.date)));
-    }, (err) => console.error("Firestore Error (Logs):", err));
+    }, (err) => {
+      console.error("Firestore Error (Logs):", err);
+    });
 
+    // ดึงข้อมูลการตั้งค่า
     const settingsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Settings');
     const unsubSettings = onSnapshot(settingsRef, (snapshot) => {
       if (!snapshot.empty) {
-        setSettings(snapshot.docs[0].data());
+        // ค้นหาเอกสาร global_settings
+        const globalSet = snapshot.docs.find(d => d.id === 'global_settings');
+        if (globalSet) {
+          setSettings(globalSet.data());
+        } else {
+          // ถ้ายังไม่มีเอกสาร ให้ใช้ค่าเริ่มต้น
+          setSettings({ staffNames: ['สมชาย ใจดี', 'วิชัย รักน้ำ'] });
+        }
       }
-    }, (err) => console.error("Firestore Error (Settings):", err));
+    }, (err) => {
+      console.error("Firestore Error (Settings):", err);
+    });
 
     return () => {
       unsubLogs();
@@ -131,13 +151,11 @@ export default function App() {
   const handleAddLog = async (formData) => {
     if (!user) return;
     try {
-      // 1. บันทึกลงฐานข้อมูลหลัก
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs'), {
         ...formData,
         timestamp: new Date().toISOString()
       });
 
-      // 2. ส่ง Webhook ไปยัง Google Sheets (รวมถึงส่งแจ้งเตือนอีเมลที่ฝั่ง Script ปลายทาง)
       if (GOOGLE_SHEETS_WEBHOOK_URL && GOOGLE_SHEETS_WEBHOOK_URL !== "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL") {
         const isPassed = (parseFloat(formData.ph) >= STANDARDS.ph.min && parseFloat(formData.ph) <= STANDARDS.ph.max && parseFloat(formData.tds) <= STANDARDS.tds.max);
         
@@ -163,7 +181,6 @@ export default function App() {
   };
 
   const handleTabChange = (tabId) => {
-    // ล็อกเฉพาะหน้ารายงานรายเดือน และ ตั้งค่าผู้ใช้งาน
     if ((tabId === 'report' || tabId === 'settings') && !isAuthorized) {
       setPendingTab(tabId);
       setShowPasswordInput(true);
@@ -193,6 +210,7 @@ export default function App() {
     try {
       const settingsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'Settings', 'global_settings');
       await setDoc(settingsDocRef, { staffNames: newStaffList });
+      // ไม่ต้อง setState เอง เพราะ onSnapshot จะดึงค่าใหม่มาให้
     } catch (err) {
       console.error("Settings update error:", err);
     }
@@ -204,7 +222,7 @@ export default function App() {
       <header className="md:hidden bg-[#002D62] text-white p-4 flex justify-between items-center sticky top-0 z-50 shadow-md print:hidden">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-[#002D62] font-black">LH</div>
-          <span className="font-bold">Water Quality</span>
+          <span className="font-bold text-sm">Water Quality Monitoring</span>
         </div>
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2">
           {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
@@ -232,9 +250,12 @@ export default function App() {
           <NavItem icon={<SettingsIcon size={20} />} label="ตั้งค่าผู้ใช้งาน" active={activeTab === 'settings'} onClick={() => handleTabChange('settings')} isLocked={!isAuthorized} />
         </nav>
 
-        <div className="p-6 bg-blue-950/40 text-[10px] text-blue-400 border-t border-blue-900/50 italic flex justify-between items-center">
-          <span>UID: {user?.uid ? user.uid.substring(0, 8) + '...' : 'Auth...'}</span>
-          {isAuthorized && <button onClick={() => setIsAuthorized(false)} title="Logout from Admin" className="hover:text-white transition-colors"><Lock size={12}/></button>}
+        <div className="p-6 bg-blue-950/40 text-[10px] text-blue-400 border-t border-blue-900/50 italic flex flex-col gap-1">
+          <div className="flex justify-between items-center">
+            <span>UID: {user?.uid ? user.uid.substring(0, 8) + '...' : 'รอการเชื่อมต่อ...'}</span>
+            {isAuthorized && <button onClick={() => setIsAuthorized(false)} title="Admin Logout" className="hover:text-white transition-colors"><Lock size={12}/></button>}
+          </div>
+          {authError && <span className="text-red-400 font-bold">⚠️ {authError.includes('auth/operation-not-allowed') ? 'กรุณาเปิด Anonymous Auth ใน Firebase' : 'การเชื่อมต่อผิดพลาด'}</span>}
         </div>
       </aside>
 
@@ -259,7 +280,7 @@ export default function App() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="ระบุรหัสผ่าน"
-                className={`w-full p-4 text-center text-2xl tracking-[1em] rounded-2xl border-2 outline-none transition-all ${passError ? 'border-red-500 bg-red-50' : 'border-gray-100 bg-gray-50 focus:border-[#002D62]'}`}
+                className={`w-full p-4 text-center text-2xl tracking-[1em] rounded-2xl border-2 outline-none transition-all ${passError ? 'border-red-500 bg-red-50 text-red-600' : 'border-gray-100 bg-gray-50 focus:border-[#002D62]'}`}
               />
               {passError && <p className="text-red-500 text-xs text-center font-bold">รหัสผ่านไม่ถูกต้อง</p>}
               <div className="flex gap-3 pt-2">
@@ -274,7 +295,7 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 p-4 md:p-10 w-full overflow-x-hidden print:p-0 print:bg-white">
         <div className="max-w-7xl mx-auto">
-          {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} isConnected={!!user} />}
+          {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} user={user} authError={authError} />}
           {activeTab === 'form' && <EntryForm onSubmit={handleAddLog} staffNames={settings.staffNames} />}
           {activeTab === 'report' && <ReportView logs={logs} />}
           {activeTab === 'settings' && <SettingsView settings={settings} onUpdateStaff={updateStaff} />}
@@ -312,7 +333,7 @@ function NavItem({ icon, label, active, onClick, isLocked }) {
 }
 
 // --- Dashboard Component ---
-function Dashboard({ logs, period, setPeriod, isConnected }) {
+function Dashboard({ logs, period, setPeriod, user, authError }) {
   const stats = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -345,6 +366,21 @@ function Dashboard({ logs, period, setPeriod, isConnected }) {
       }));
   }, [logs]);
 
+  // กำหนดสถานะการเชื่อมต่อ
+  let connectionStatus = "กำลังเชื่อมต่อ...";
+  let statusIcon = <Loader2 className="text-amber-500 animate-spin" />;
+  let statusColor = "border-amber-500";
+
+  if (user) {
+    connectionStatus = "พร้อมใช้งาน";
+    statusIcon = <CheckCircle2 className="text-green-500" />;
+    statusColor = "border-green-500";
+  } else if (authError) {
+    connectionStatus = "เชื่อมต่อไม่สำเร็จ";
+    statusIcon = <XCircle className="text-red-500" />;
+    statusColor = "border-red-500";
+  }
+
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -363,10 +399,10 @@ function Dashboard({ logs, period, setPeriod, isConnected }) {
         <StatCard title="ตกเกณฑ์ในเดือนนี้" value={stats.failedThisMonth} isAlert={stats.failedThisMonth > 0} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
         <StatCard 
           title="ความพร้อมใช้งาน" 
-          value={isConnected ? "พร้อม" : "กำลังเชื่อมต่อ"} 
-          description="สถานะการเชื่อมต่อฐานข้อมูลแบบ Real-time"
-          icon={<LayoutDashboard className={isConnected ? "text-green-500" : "text-amber-500 animate-pulse"} />} 
-          color="border-[#B8904F]" 
+          value={connectionStatus} 
+          description={authError ? "โปรดตรวจสอบการเปิดใช้งาน Anonymous Auth" : "สถานะการเชื่อมต่อกับระบบฐานข้อมูล"}
+          icon={statusIcon} 
+          color={statusColor} 
         />
       </div>
 
@@ -701,12 +737,16 @@ function SettingsView({ settings, onUpdateStaff }) {
           >เพิ่มรายชื่อ</button>
         </div>
         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-          {settings.staffNames.map((n, i) => (
-            <div key={i} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-gray-100 group hover:bg-white hover:shadow-md transition-all">
-              <span className="font-bold text-gray-700">{n}</span>
-              <button onClick={() => onUpdateStaff(settings.staffNames.filter(x => x !== n))} className="text-red-300 hover:text-red-500 transition-colors p-2"><XCircle size={24}/></button>
-            </div>
-          ))}
+          {settings.staffNames.length === 0 ? (
+            <p className="text-center text-gray-400 py-10 italic">ยังไม่มีรายชื่อเจ้าหน้าที่</p>
+          ) : (
+            settings.staffNames.map((n, i) => (
+              <div key={i} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-gray-100 group hover:bg-white hover:shadow-md transition-all">
+                <span className="font-bold text-gray-700">{n}</span>
+                <button onClick={() => onUpdateStaff(settings.staffNames.filter(x => x !== n))} className="text-red-300 hover:text-red-500 transition-colors p-2"><XCircle size={24}/></button>
+              </div>
+            ))
+          )}
         </div>
       </div>
       
