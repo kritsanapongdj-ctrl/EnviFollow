@@ -1,22 +1,5 @@
 /* eslint-disable no-undef */
 import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken, 
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  onSnapshot, 
-  query, 
-  doc, 
-  setDoc,
-  writeBatch
-} from 'firebase/firestore';
 import { 
   LineChart, 
   Line, 
@@ -45,31 +28,17 @@ import {
   Printer,
   Lock,
   Loader2,
-  Upload,
-  Info
+  Database,
+  RefreshCw
 } from 'lucide-react';
 
 // ----------------------------------------------------------------------
-// 🔥 Firebase Configuration
+// 🔥 ตั้งค่า Google Sheets Webhook URL (นำ URL จาก Apps Script มาใส่ที่นี่)
 // ----------------------------------------------------------------------
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-  ? JSON.parse(__firebase_config) 
-  : {
-      apiKey: "AIzaSyAkyc7Y9lWUEcbx7qFXYf5TkXv9ZN2BNaA",
-      authDomain: "watertestqc.firebaseapp.com",
-      projectId: "watertestqc",
-      storageBucket: "watertestqc.firebasestorage.app",
-      messagingSenderId: "252336496800",
-      appId: "1:252336496800:web:25b6406fee8fee4eb4e9c5",
-      measurementId: "G-ZSDZW78FVK"
-    };
+const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbye-bVzYBrYRJY0td_C3A-3GSad2Q-zBv4Z-IVTzpnU-WxVEpElzZiKz0Y1IclFDb8X/exec";
+// ลิงก์สำหรับเปิดหน้า Google Sheets โดยตรง
+const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/1Uelo0HpxYJsZdI5Y451anwk2vK9L9y6jIWQIJFS6vow/edit?gid=0#gid=0";
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'wastewater-v1';
-
-// มาตรฐานที่ใช้ตรวจสอบ
 const STANDARDS = {
   ph: { min: 5.5, max: 9.0 },
   tds: { max: 1000 },
@@ -80,13 +49,13 @@ const STANDARDS = {
 };
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [authError, setAuthError] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [logs, setLogs] = useState([]);
   const [settings, setSettings] = useState({ staffNames: ['สมชาย ใจดี', 'วิชัย รักน้ำ'] });
   const [chartPeriod, setChartPeriod] = useState(6);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [sheetError, setSheetError] = useState(null);
   
   // State สำหรับระบบ Lock
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -95,50 +64,61 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [passError, setPassError] = useState(false);
 
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-        setAuthError(null);
-      } catch (err) {
-        console.error("Auth error:", err);
-        setAuthError(err.message);
+  // ฟังก์ชันดึงข้อมูลจาก Google Sheets
+  const fetchLogsFromSheets = async () => {
+    try {
+      setIsLoading(true);
+      setSheetError(null);
+      
+      const response = await fetch(GOOGLE_SHEETS_WEBHOOK_URL);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
+      
+      const text = await response.text();
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        throw new Error("ข้อมูลที่ได้รับไม่ใช่ JSON (คาดว่าโค้ด Apps Script ยังจำเวอร์ชันเก่าอยู่)");
+      }
+      
+      if (result && result.status === 'success' && Array.isArray(result.data)) {
+        // เรียงวันที่ล่าสุดขึ้นก่อน
+        const sortedData = result.data.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setLogs(sortedData);
+      } else {
+        setLogs([]); // ป้องกันแอปแครชด้วยการตั้งค่าเป็น Array ว่าง
+        throw new Error("รูปแบบข้อมูลจาก Sheet ไม่ถูกต้อง หรือตารางยังไม่มีข้อมูล");
+      }
+    } catch (error) {
+      // เปลี่ยนจาก console.error เป็น console.warn เพื่อไม่ให้ระบบ Canvas เด้ง Error Overlay สีแดงขัดจังหวะการใช้งาน
+      console.warn("Fetch warning:", error.message);
+      setLogs([]); // ให้ตารางเป็นค่าว่างเวลาเกิด Error
+      
+      if (error.name === 'TypeError' || error.message.includes('fetch')) {
+        setSheetError("การเชื่อมต่อถูกบล็อก: วิธีแก้คือกลับไปที่ Google Apps Script กดปุ่ม 'Deploy' -> เลือก 'New deployment' เท่านั้น (ห้ามเลือก Manage deployment เดิม) และตั้งค่า Who has access เป็น 'Anyone'");
+      } else {
+        setSheetError(error.message);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // โหลดข้อมูลเริ่มต้น
+  useEffect(() => {
+    // โหลดรายชื่อผู้ใช้งานจาก LocalStorage
+    const savedSettings = localStorage.getItem('waterQCSettings');
+    if (savedSettings) {
+      setSettings(JSON.parse(savedSettings));
+    }
+    fetchLogsFromSheets();
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-
-    const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs');
-    const unsubLogs = onSnapshot(logsRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setLogs(data.sort((a, b) => new Date(b.date) - new Date(a.date)));
-    }, (err) => console.error("Firestore Error (Logs):", err));
-
-    const settingsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Settings');
-    const unsubSettings = onSnapshot(settingsRef, (snapshot) => {
-      if (!snapshot.empty) {
-        const globalSet = snapshot.docs.find(d => d.id === 'global_settings');
-        if (globalSet) setSettings(globalSet.data());
-      }
-    }, (err) => console.error("Firestore Error (Settings):", err));
-
-    return () => { unsubLogs(); unsubSettings(); };
-  }, [user]);
-
-  const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8b9Dgr3VLY76VN5DnhdjiieO3N6w1J93Tj1gT7BNb6UTnxQG3Nup4HOGp5jDOT3x8IA/exec";
-
-  // ฟังก์ชันบันทึกข้อมูลเดี่ยว + แจ้งเตือนวิกฤต
+  // ฟังก์ชันบันทึกข้อมูลเดี่ยวไปยัง Google Sheets
   const handleAddLog = async (formData) => {
-    if (!user) return;
     try {
       const phVal = parseFloat(formData.ph);
       const tdsVal = parseFloat(formData.tds);
@@ -146,78 +126,30 @@ export default function App() {
       const needsCriticalAlert = (phVal < STANDARDS.alert_ph_min || phVal > STANDARDS.alert_ph_max || tdsVal > STANDARDS.alert_tds);
       const isPassedNormal = (phVal >= STANDARDS.ph.min && phVal <= STANDARDS.ph.max && tdsVal <= STANDARDS.tds.max);
 
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs'), {
+      const newLogEntry = {
         ...formData,
-        timestamp: new Date().toISOString()
+        status: isPassedNormal ? "ผ่านเกณฑ์" : "ไม่ผ่านเกณฑ์",
+        critical_alert: needsCriticalAlert,
+      };
+
+      // เพิ่มเข้า State ในหน้าเว็บให้เห็นทันที (Optimistic Update)
+      setLogs(prev => [newLogEntry, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
+      setActiveTab('dashboard');
+
+      // ส่งข้อมูลไป Google Sheets เป็นเบื้องหลังด้วย POST (โหมด no-cors เพื่อไม่ให้เกิด Error หน้าเว็บ)
+      await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+        method: 'POST',
+        mode: 'no-cors', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          data: newLogEntry
+        })
       });
 
-      if (GOOGLE_SHEETS_WEBHOOK_URL && GOOGLE_SHEETS_WEBHOOK_URL !== "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL") {
-        try {
-          await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...formData,
-              status: isPassedNormal ? "ผ่านเกณฑ์" : "ไม่ผ่านเกณฑ์",
-              critical_alert: needsCriticalAlert,
-              alert_recipient: needsCriticalAlert ? STANDARDS.alert_email : null,
-              system_link: window.location.href
-            })
-          });
-        } catch (fetchErr) {
-          console.error("Webhook Error:", fetchErr);
-        }
-      }
-      setActiveTab('dashboard');
     } catch (err) {
-      console.error("Save error:", err);
-    }
-  };
-
-  // ฟังก์ชันนำเข้าข้อมูลจำนวนมาก (แก้ไขระบบ Batch และใส่ Timeout ป้องกันการค้าง)
-  const handleImportData = async (importedLogs, onProgress) => {
-    if (!user || importedLogs.length === 0) return false;
-    try {
-      const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs');
-      let current = 0;
-      
-      // ส่งทีละ 50 รายการ เพื่อไม่ให้ฐานข้อมูลมองว่าเป็นสแปม
-      const CHUNK_SIZE = 50; 
-      
-      for (let i = 0; i < importedLogs.length; i += CHUNK_SIZE) {
-        const chunk = importedLogs.slice(i, i + CHUNK_SIZE);
-        const batch = writeBatch(db);
-        
-        chunk.forEach(log => {
-          const newDocRef = doc(logsRef);
-          batch.set(newDocRef, {
-            ...log,
-            timestamp: new Date().toISOString()
-          });
-        });
-
-        // บังคับหยุดการทำงาน (Timeout) หาก Firebase ไม่ตอบสนองเกิน 15 วินาที
-        await Promise.race([
-          batch.commit(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 15000))
-        ]);
-        
-        current += chunk.length;
-        
-        // อัปเดต UI หน้าจอ
-        if (onProgress) {
-          onProgress(Math.min(current, importedLogs.length), importedLogs.length);
-        }
-        
-        // พักการทำงาน 0.3 วินาที ให้เบราว์เซอร์ได้หายใจ ป้องกันอาการค้าง
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
-      
-      return true;
-    } catch (err) {
-      console.error("Import error:", err);
-      throw err; // โยน Error ออกไปให้ UI แจ้งเตือน
+      console.warn("Save warning:", err.message);
+      alert("เกิดข้อผิดพลาดในการส่งข้อมูลไปยังเบื้องหลัง (ข้อมูลโชว์บนหน้าเว็บแล้ว แต่ฝั่งชีตอาจมีปัญหา)");
     }
   };
 
@@ -246,14 +178,9 @@ export default function App() {
     }
   };
 
-  const updateStaff = async (newStaffList) => {
-    if (!user) return;
-    try {
-      const settingsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'Settings', 'global_settings');
-      await setDoc(settingsDocRef, { staffNames: newStaffList });
-    } catch (err) {
-      console.error("Settings update error:", err);
-    }
+  const updateStaff = (newStaffList) => {
+    setSettings({ staffNames: newStaffList });
+    localStorage.setItem('waterQCSettings', JSON.stringify({ staffNames: newStaffList }));
   };
 
   return (
@@ -286,10 +213,9 @@ export default function App() {
         </nav>
         <div className="p-6 bg-blue-950/40 text-[10px] text-blue-400 border-t border-blue-900/50 italic flex flex-col gap-1">
           <div className="flex justify-between items-center">
-            <span>UID: {user?.uid ? user.uid.substring(0, 8) + '...' : 'รอการเชื่อมต่อ...'}</span>
+            <span>ฐานข้อมูล: Google Sheets</span>
             {isAuthorized && <button onClick={() => setIsAuthorized(false)} title="Admin Logout" className="hover:text-white transition-colors"><Lock size={12}/></button>}
           </div>
-          {authError && <span className="text-red-400 font-bold">⚠️ {authError.includes('auth/operation-not-allowed') ? 'กรุณาเปิด Anonymous Auth ใน Firebase' : 'การเชื่อมต่อผิดพลาด'}</span>}
         </div>
       </aside>
 
@@ -315,11 +241,34 @@ export default function App() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 p-4 md:p-10 w-full overflow-x-hidden print:p-0 print:bg-white">
+      <main className="flex-1 p-4 md:p-10 w-full overflow-x-hidden print:p-0 print:bg-white relative">
+        {isLoading && (
+          <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
+             <Loader2 size={40} className="animate-spin text-[#002D62] mb-4" />
+             <p className="text-[#002D62] font-bold">กำลังดึงข้อมูลจาก Google Sheets...</p>
+          </div>
+        )}
+        
+        {/* Error Banner */}
+        {sheetError && (
+          <div className="max-w-7xl mx-auto mb-6 bg-red-50 border-l-4 border-red-500 p-4 sm:p-5 rounded-r-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in slide-in-from-top-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="text-red-500 mt-0.5 shrink-0" size={24} />
+              <div>
+                <h3 className="text-red-800 font-bold">เชื่อมต่อ Google Sheets ล้มเหลว (CORS)</h3>
+                <p className="text-red-600 text-xs sm:text-sm mt-1 leading-relaxed max-w-3xl">{sheetError}</p>
+              </div>
+            </div>
+            <button onClick={fetchLogsFromSheets} className="shrink-0 bg-red-100 text-red-700 hover:bg-red-200 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors w-full sm:w-auto justify-center">
+              <RefreshCw size={16} /> ลองใหม่
+            </button>
+          </div>
+        )}
+
         <div className="max-w-7xl mx-auto">
-          {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} user={user} authError={authError} />}
+          {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} hasError={!!sheetError} />}
           {activeTab === 'form' && <EntryForm onSubmit={handleAddLog} staffNames={settings.staffNames} />}
-          {activeTab === 'report' && <ReportView logs={logs} onImport={handleImportData} />}
+          {activeTab === 'report' && <ReportView logs={logs} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} />}
           {activeTab === 'settings' && <SettingsView settings={settings} onUpdateStaff={updateStaff} />}
         </div>
       </main>
@@ -342,24 +291,30 @@ function NavItem({ icon, label, active, onClick, isLocked }) {
 }
 
 // --- Dashboard Component ---
-function Dashboard({ logs, period, setPeriod, user, authError }) {
+function Dashboard({ logs, period, setPeriod, hasError }) {
   const stats = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
-    const monthlyLogs = logs.filter(l => { const d = new Date(l.date); return d.getMonth() === currentMonth && d.getFullYear() === currentYear; });
-    const passedTotal = logs.filter(l => l.ph >= STANDARDS.ph.min && l.ph <= STANDARDS.ph.max && l.tds <= STANDARDS.tds.max).length;
-    const failedThisMonth = monthlyLogs.filter(l => l.ph < STANDARDS.ph.min || l.ph > STANDARDS.ph.max || l.tds > STANDARDS.tds.max).length;
+    const monthlyLogs = logs.filter(l => { 
+      const d = new Date(l.date); 
+      if(isNaN(d.getTime())) return false;
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear; 
+    });
+    
+    const passedTotal = logs.filter(l => parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max).length;
+    const failedThisMonth = monthlyLogs.filter(l => parseFloat(l.ph) < STANDARDS.ph.min || parseFloat(l.ph) > STANDARDS.ph.max || parseFloat(l.tds) > STANDARDS.tds.max).length;
+    
     return { passedTotal, failedThisMonth, total: logs.length };
   }, [logs]);
 
   const chartData = useMemo(() => {
-    return [...logs].reverse().slice(-10).map(l => ({ name: new Date(l.date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }), ph: parseFloat(l.ph) || 0, tds: parseFloat(l.tds) || 0 }));
+    return [...logs].reverse().slice(-10).map(l => ({ 
+      name: new Date(l.date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }) === 'Invalid Date' ? l.date : new Date(l.date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }), 
+      ph: parseFloat(l.ph) || 0, 
+      tds: parseFloat(l.tds) || 0 
+    }));
   }, [logs]);
-
-  let connectionStatus = "กำลังเชื่อมต่อ...", statusIcon = <Loader2 className="text-amber-500 animate-spin" />, statusColor = "border-amber-500";
-  if (user) { connectionStatus = "พร้อมใช้งาน"; statusIcon = <CheckCircle2 className="text-green-500" />; statusColor = "border-green-500"; }
-  else if (authError) { connectionStatus = "เชื่อมต่อไม่สำเร็จ"; statusIcon = <XCircle className="text-red-500" />; statusColor = "border-red-500"; }
 
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
@@ -372,7 +327,13 @@ function Dashboard({ logs, period, setPeriod, user, authError }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         <StatCard title="ผ่านมาตรฐานทั้งหมด" value={stats.passedTotal} total={stats.total} icon={<CheckCircle2 className="text-green-500" />} color="border-[#002D62]" />
         <StatCard title="ตกเกณฑ์ในเดือนนี้" value={stats.failedThisMonth} isAlert={stats.failedThisMonth > 0} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
-        <StatCard title="ความพร้อมใช้งาน" value={connectionStatus} description="สถานะการเชื่อมต่อฐานข้อมูล Cloud" icon={statusIcon} color={statusColor} />
+        <StatCard 
+          title="สถานะฐานข้อมูลชีต" 
+          value={hasError ? "มีข้อผิดพลาด" : "พร้อมใช้งาน"} 
+          description={hasError ? "ไม่สามารถดึงข้อมูลย้อนหลังได้" : "เชื่อมโยงกับ Google Sheets เรียบร้อย"} 
+          icon={hasError ? <XCircle className="text-red-500" /> : <Database className="text-[#002D62]" />} 
+          color={hasError ? "border-red-500" : "border-[#B8904F]"} 
+        />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
         <ChartBox title="แนวโน้มค่า pH (เป้าหมาย 5.5 - 9.0)" data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
@@ -403,14 +364,18 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
       <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2 text-sm sm:text-base"><div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: color }}></div>{title}</h3>
       <div className="h-64 sm:h-80 lg:h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-            <XAxis dataKey="name" axisLine={false} tickLine={false} style={{ fontSize: '11px' }} />
-            <YAxis axisLine={false} tickLine={false} style={{ fontSize: '11px' }} domain={yDomain} />
-            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-            {limits.map((limit, idx) => (<ReferenceLine key={idx} y={limit} stroke="#ef4444" strokeDasharray="5 5" label={{ position: 'right', value: `เกณฑ์ ${limit}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} />))}
-            <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={3} dot={{ r: 4, fill: color, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
-          </LineChart>
+          {data.length > 0 ? (
+            <LineChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} style={{ fontSize: '11px' }} />
+              <YAxis axisLine={false} tickLine={false} style={{ fontSize: '11px' }} domain={yDomain} />
+              <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+              {limits.map((limit, idx) => (<ReferenceLine key={idx} y={limit} stroke="#ef4444" strokeDasharray="5 5" label={{ position: 'right', value: `เกณฑ์ ${limit}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} />))}
+              <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={3} dot={{ r: 4, fill: color, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+            </LineChart>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm italic">ไม่มีข้อมูลแสดงผล</div>
+          )}
         </ResponsiveContainer>
       </div>
     </div>
@@ -418,110 +383,22 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
 }
 
 // --- Report View Component ---
-function ReportView({ logs, onImport }) {
+function ReportView({ logs, sheetUrl }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  
-  // States สำหรับระบบอัปโหลดและแจ้งเตือน
-  const [isImporting, setIsImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState(null); // { current, total }
-  const [importMessage, setImportMessage] = useState(''); // ใช้แทน alert()
   
   const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
   const filteredLogs = useMemo(() => {
-    return logs.filter(l => { const d = new Date(l.date); return d.getMonth() === parseInt(selectedMonth) && d.getFullYear() === parseInt(selectedYear); });
+    return logs.filter(l => { 
+      const d = new Date(l.date); 
+      if(isNaN(d.getTime())) return false; // ข้ามบรรทัดที่วันที่ไม่ถูกต้อง
+      return d.getMonth() === parseInt(selectedMonth) && d.getFullYear() === parseInt(selectedYear); 
+    });
   }, [logs, selectedMonth, selectedYear]);
-
-  // ฟังก์ชันนำเข้าไฟล์ CSV
-  const handleCSVImport = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setIsImporting(true);
-    setImportProgress({ current: 0, total: 0 });
-    setImportMessage('');
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const text = event.target.result;
-        // รองรับการแบ่งบรรทัดทั้ง \n และ \r\n
-        const lines = text.split(/\r?\n/);
-        const results = [];
-        
-        // ข้ามบรรทัดหัวข้อ (Header)
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) continue;
-          
-          const cols = line.split(',');
-          // ยืดหยุ่นขึ้น ถ้ายาวเกิน 5 คอลัมน์ก็นำเข้าได้
-          if (cols.length >= 5) {
-            results.push({
-              date: (cols[0] || '').replace(/['"]/g, '').trim(),
-              location: (cols[1] || '').replace(/['"]/g, '').trim(),
-              poolNo: (cols[2] || '').replace(/['"]/g, '').trim() || '1',
-              ph: (cols[3] || '').replace(/['"]/g, '').trim(),
-              tds: (cols[4] || '').replace(/['"]/g, '').trim(),
-              color: (cols[5] || 'ใส').replace(/['"]/g, '').trim(),
-              odor: (cols[6] || 'ไม่มีกลิ่น').replace(/['"]/g, '').trim(),
-              recorder: (cols[7] || '').replace(/['"]/g, '').trim(),
-            });
-          }
-        }
-
-        if (results.length === 0) {
-          setImportMessage("ไม่พบข้อมูลที่ถูกต้องในไฟล์ กรุณาตรวจสอบรูปแบบตาราง CSV (ต้องมีคอลัมน์อย่างน้อย 5 ช่อง)");
-          setIsImporting(false);
-          return;
-        }
-
-        setImportProgress({ current: 0, total: results.length });
-
-        // นำเข้าข้อมูลพร้อมอัปเดตสถานะ Progress กลับมา
-        const success = await onImport(results, (current, total) => {
-          setImportProgress({ current, total });
-        });
-
-        if (success) {
-          setImportMessage(`นำเข้าข้อมูลสำเร็จจำนวน ${results.length} รายการ!`);
-        }
-      } catch (err) {
-        console.error(err);
-        if (err.message === "Timeout") {
-           setImportMessage("การนำเข้าข้อมูลล้มเหลว (Timeout): ฐานข้อมูลไม่ตอบสนอง กรุณาลองแบ่งไฟล์ให้เล็กลง");
-        } else {
-           setImportMessage("รูปแบบไฟล์ไม่ถูกต้อง หรือเกิดข้อผิดพลาด: " + err.message);
-        }
-      } finally {
-        setIsImporting(false);
-        setImportProgress(null);
-        e.target.value = null; // รีเซ็ต input ให้รับไฟล์เดิมซ้ำได้
-      }
-    };
-    reader.readAsText(file);
-  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 relative">
-      
-      {/* Custom Modal Notification (ใช้แทน Alert เพื่อไม่ให้ค้างบน Canvas) */}
-      {importMessage && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 text-center">
-            <div className="w-16 h-16 bg-blue-50 text-[#002D62] rounded-full flex items-center justify-center mb-6 mx-auto">
-              <Info size={32} />
-            </div>
-            <h3 className="text-xl font-bold text-gray-800 mb-4">แจ้งเตือน</h3>
-            <p className="text-gray-600 mb-8 leading-relaxed">{importMessage}</p>
-            <button onClick={() => setImportMessage('')} className="w-full py-3 bg-[#002D62] hover:bg-[#003d82] text-white rounded-xl font-bold shadow-lg transition-all">
-              ตกลง
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 print:hidden">
         <div>
           <h2 className="text-2xl font-bold text-[#002D62]">รายงานสรุปคุณภาพน้ำ</h2>
@@ -558,32 +435,13 @@ function ReportView({ logs, onImport }) {
           <Download size={20} /> ส่งออก (CSV)
         </button>
         
-        {/* ปุ่มนำเข้าข้อมูลแบบมี Progress Bar */}
-        <label className="flex items-center justify-center gap-3 bg-white border-2 border-dashed border-gray-300 text-gray-600 p-4 rounded-2xl font-bold hover:bg-gray-50 cursor-pointer transition-all shadow-sm relative overflow-hidden">
-          {isImporting ? (
-            <>
-              <div 
-                className="absolute inset-y-0 left-0 bg-blue-100 transition-all duration-300 z-0" 
-                style={{ width: importProgress && importProgress.total > 0 ? `${(importProgress.current / importProgress.total) * 100}%` : '0%' }}
-              ></div>
-              <Loader2 size={20} className="animate-spin text-[#002D62] relative z-10" /> 
-              <span className="relative z-10 text-[#002D62]">
-                {importProgress && importProgress.total > 0 
-                  ? `นำเข้า ${importProgress.current}/${importProgress.total}` 
-                  : 'เตรียมข้อมูล...'}
-              </span>
-            </>
-          ) : (
-            <>
-              <Upload size={20} className="text-[#B8904F]" />
-              <span>อัปโหลด .CSV</span>
-              <input type="file" accept=".csv" onChange={handleCSVImport} className="hidden" disabled={isImporting} />
-            </>
-          )}
-        </label>
+        <button onClick={() => window.open(sheetUrl, '_blank')} className="flex items-center justify-center gap-3 bg-white border-2 border-dashed border-gray-300 text-gray-600 p-4 rounded-2xl font-bold hover:bg-gray-50 transition-all shadow-sm">
+          <Database size={20} className="text-[#002D62]" /> 
+          <span>เปิดชีตเพื่อวางข้อมูลเก่า</span>
+        </button>
 
-        <button onClick={() => window.open('https://docs.google.com/spreadsheets/', '_blank')} className="flex items-center justify-center gap-3 bg-[#16A34A] text-white p-4 rounded-2xl font-bold shadow-lg hover:bg-[#15803d] transition-all">
-          <Share2 size={20} /> เปิดชีต
+        <button onClick={() => window.open(sheetUrl, '_blank')} className="flex items-center justify-center gap-3 bg-[#16A34A] text-white p-4 rounded-2xl font-bold shadow-lg hover:bg-[#15803d] transition-all">
+          <Share2 size={20} /> เปิด Google Sheets
         </button>
       </div>
 
@@ -666,7 +524,6 @@ function EntryForm({ onSubmit, staffNames }) {
     onSubmit(formData);
   };
 
-  // ตรวจสอบว่าเข้าข่ายวิกฤตหรือไม่ สำหรับโชว์ข้อความเตือนก่อนบันทึก
   const phVal = parseFloat(formData.ph);
   const tdsVal = parseFloat(formData.tds);
   const isCritical = (phVal < STANDARDS.alert_ph_min || phVal > STANDARDS.alert_ph_max || tdsVal > STANDARDS.alert_tds);
@@ -677,7 +534,7 @@ function EntryForm({ onSubmit, staffNames }) {
         <div className="bg-[#002D62] p-8 md:p-10 text-white flex justify-between items-center">
           <div>
             <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3"><PlusCircle size={28} className="text-[#B8904F]" /> บันทึกผลการตรวจคุณภาพน้ำ</h2>
-            <p className="text-blue-200 mt-1 opacity-80 text-xs md:text-sm">ตรวจสอบเกณฑ์อัตโนมัติและส่งแจ้งเตือนพิเศษทางอีเมล</p>
+            <p className="text-blue-200 mt-1 opacity-80 text-xs md:text-sm">ตรวจสอบเกณฑ์อัตโนมัติและส่งข้อมูลไปที่ Google Sheets</p>
           </div>
           <ClipboardList size={48} className="opacity-20 hidden sm:block" />
         </div>
@@ -699,7 +556,7 @@ function EntryForm({ onSubmit, staffNames }) {
             
             <FormField label="เจ้าหน้าที่ผู้ตรวจ">
               <select name="recorder" value={formData.recorder} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-bold">
-                {staffNames.map(s => <option key={s} value={s}>{s}</option>)}
+                {staffNames.length > 0 ? staffNames.map(s => <option key={s} value={s}>{s}</option>) : <option value="">กรุณาเพิ่มชื่อในตั้งค่า</option>}
               </select>
             </FormField>
           </div>
@@ -719,7 +576,7 @@ function EntryForm({ onSubmit, staffNames }) {
           </div>
 
           <button type="submit" className="w-full bg-[#002D62] hover:bg-[#003d82] text-white py-5 rounded-2xl font-black text-lg md:text-xl shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3">
-            <CheckCircle2 size={24} /> ยืนยันการบันทึก
+            <CheckCircle2 size={24} /> ยืนยันการบันทึกไปยัง Google Sheets
           </button>
         </form>
       </div>
@@ -728,7 +585,7 @@ function EntryForm({ onSubmit, staffNames }) {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 border-t-8 border-red-500">
             <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 mx-auto shadow-inner"><AlertCircle size={32} /></div>
-            <h3 className="text-2xl font-bold text-center text-gray-800 mb-2">ตรวจพบค่าที่ตกเกณฑ์</h3>
+            <h3 className="text-xl font-bold text-center text-gray-800 mb-2">ตรวจพบค่าที่ตกเกณฑ์</h3>
             <p className="text-center text-gray-600 mb-8 leading-relaxed">
               ค่าคุณภาพน้ำที่ระบุ <strong className="text-red-500">อยู่นอกเกณฑ์มาตรฐาน</strong>
               <br/>
