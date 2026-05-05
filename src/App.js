@@ -1,5 +1,21 @@
 /* eslint-disable no-undef */
 import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  signInWithCustomToken, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  doc, 
+  setDoc,
+  writeBatch
+} from 'firebase/firestore';
 import { 
   LineChart, 
   Line, 
@@ -29,15 +45,33 @@ import {
   Lock,
   Loader2,
   Database,
-  RefreshCw
+  Upload,
+  Info
 } from 'lucide-react';
 
 // ----------------------------------------------------------------------
-// 🔥 ตั้งค่า Google Sheets Webhook URL (นำ URL จาก Apps Script มาใส่ที่นี่)
+// 🔥 ตั้งค่าระบบฐานข้อมูลและ Webhook
 // ----------------------------------------------------------------------
+// URL สำหรับส่งข้อมูลไปลงตาราง Google Sheets และส่งอีเมลแจ้งเตือน
 const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbye-bVzYBrYRJY0td_C3A-3GSad2Q-zBv4Z-IVTzpnU-WxVEpElzZiKz0Y1IclFDb8X/exec";
-// ลิงก์สำหรับเปิดหน้า Google Sheets โดยตรง
-const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/1Uelo0HpxYJsZdI5Y451anwk2vK9L9y6jIWQIJFS6vow/edit?gid=0#gid=0";
+const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit";
+
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : {
+      apiKey: "AIzaSyAkyc7Y9lWUEcbx7qFXYf5TkXv9ZN2BNaA",
+      authDomain: "watertestqc.firebaseapp.com",
+      projectId: "watertestqc",
+      storageBucket: "watertestqc.firebasestorage.app",
+      messagingSenderId: "252336496800",
+      appId: "1:252336496800:web:25b6406fee8fee4eb4e9c5",
+      measurementId: "G-ZSDZW78FVK"
+    };
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'wastewater-v1';
 
 const STANDARDS = {
   ph: { min: 5.5, max: 9.0 },
@@ -49,13 +83,13 @@ const STANDARDS = {
 };
 
 export default function App() {
+  const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [logs, setLogs] = useState([]);
   const [settings, setSettings] = useState({ staffNames: ['สมชาย ใจดี', 'วิชัย รักน้ำ'] });
   const [chartPeriod, setChartPeriod] = useState(6);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [sheetError, setSheetError] = useState(null);
+  const [authError, setAuthError] = useState(null);
   
   // State สำหรับระบบ Lock
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -64,61 +98,59 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [passError, setPassError] = useState(false);
 
-  // ฟังก์ชันดึงข้อมูลจาก Google Sheets
-  const fetchLogsFromSheets = async () => {
-    try {
-      setIsLoading(true);
-      setSheetError(null);
-      
-      const response = await fetch(GOOGLE_SHEETS_WEBHOOK_URL);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const text = await response.text();
-      let result;
-      try {
-        result = JSON.parse(text);
-      } catch (e) {
-        throw new Error("ข้อมูลที่ได้รับไม่ใช่ JSON (คาดว่าโค้ด Apps Script ยังจำเวอร์ชันเก่าอยู่)");
-      }
-      
-      if (result && result.status === 'success' && Array.isArray(result.data)) {
-        // เรียงวันที่ล่าสุดขึ้นก่อน
-        const sortedData = result.data.sort((a, b) => new Date(b.date) - new Date(a.date));
-        setLogs(sortedData);
-      } else {
-        setLogs([]); // ป้องกันแอปแครชด้วยการตั้งค่าเป็น Array ว่าง
-        throw new Error("รูปแบบข้อมูลจาก Sheet ไม่ถูกต้อง หรือตารางยังไม่มีข้อมูล");
-      }
-    } catch (error) {
-      // เปลี่ยนจาก console.error เป็น console.warn เพื่อไม่ให้ระบบ Canvas เด้ง Error Overlay สีแดงขัดจังหวะการใช้งาน
-      console.warn("Fetch warning:", error.message);
-      setLogs([]); // ให้ตารางเป็นค่าว่างเวลาเกิด Error
-      
-      if (error.name === 'TypeError' || error.message.includes('fetch')) {
-        setSheetError("การเชื่อมต่อถูกบล็อก: วิธีแก้คือกลับไปที่ Google Apps Script กดปุ่ม 'Deploy' -> เลือก 'New deployment' เท่านั้น (ห้ามเลือก Manage deployment เดิม) และตั้งค่า Who has access เป็น 'Anyone'");
-      } else {
-        setSheetError(error.message);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // โหลดข้อมูลเริ่มต้น
+  // 1. ลงชื่อเข้าใช้ระบบฐานข้อมูลเรียลไทม์ (เพื่อให้ข้อมูลลิงก์กันทุกคน)
   useEffect(() => {
-    // โหลดรายชื่อผู้ใช้งานจาก LocalStorage
-    const savedSettings = localStorage.getItem('waterQCSettings');
-    if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
-    }
-    fetchLogsFromSheets();
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+        setAuthError(null);
+      } catch (err) {
+        console.error("Auth error:", err);
+        setAuthError(err.message);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
   }, []);
 
-  // ฟังก์ชันบันทึกข้อมูลเดี่ยวไปยัง Google Sheets
+  // 2. ดึงข้อมูลแบบเรียลไทม์ (รีเฟรชหน้าต่างก็ไม่หาย)
+  useEffect(() => {
+    if (!user) return;
+
+    // ดึงข้อมูลคุณภาพน้ำ
+    const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs');
+    const unsubLogs = onSnapshot(logsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLogs(data.sort((a, b) => new Date(b.date) - new Date(a.date)));
+    }, (err) => console.error("Firestore Error (Logs):", err));
+
+    // ดึงข้อมูลการตั้งค่า (เช่น ชื่อพนักงาน) ให้ตรงกันทุกคน
+    const settingsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Settings');
+    const unsubSettings = onSnapshot(settingsRef, (snapshot) => {
+      let found = false;
+      snapshot.forEach(docSnap => {
+        if (docSnap.id === 'global_settings') {
+          setSettings(docSnap.data());
+          found = true;
+        }
+      });
+      // ถ้าเพิ่งใช้งานครั้งแรก ให้ใช้ค่าเริ่มต้น
+      if (!found) {
+        setSettings({ staffNames: ['สมชาย ใจดี', 'วิชัย รักน้ำ'] });
+      }
+    }, (err) => console.error("Firestore Error (Settings):", err));
+
+    return () => { unsubLogs(); unsubSettings(); };
+  }, [user]);
+
+  // ฟังก์ชันบันทึกข้อมูลเดี่ยว (เก็บลงระบบเรียลไทม์ + โยนสำเนาไป Google Sheets)
   const handleAddLog = async (formData) => {
+    if (!user) return;
     try {
       const phVal = parseFloat(formData.ph);
       const tdsVal = parseFloat(formData.tds);
@@ -130,26 +162,77 @@ export default function App() {
         ...formData,
         status: isPassedNormal ? "ผ่านเกณฑ์" : "ไม่ผ่านเกณฑ์",
         critical_alert: needsCriticalAlert,
+        timestamp: new Date().toISOString()
       };
 
-      // เพิ่มเข้า State ในหน้าเว็บให้เห็นทันที (Optimistic Update)
-      setLogs(prev => [newLogEntry, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
+      // 1. เก็บลงฐานข้อมูลระบบเว็บ เพื่อให้แสดงผลทันทีและไม่หายไปไหน
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs'), newLogEntry);
+      
       setActiveTab('dashboard');
 
-      // ส่งข้อมูลไป Google Sheets เป็นเบื้องหลังด้วย POST (โหมด no-cors เพื่อไม่ให้เกิด Error หน้าเว็บ)
-      await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-        method: 'POST',
-        mode: 'no-cors', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add',
-          data: newLogEntry
-        })
-      });
-
+      // 2. ส่งข้อมูลไปเก็บซ้ำอัปเดตใน Google Sheets และส่งแจ้งเตือนอีเมล
+      if (GOOGLE_SHEETS_WEBHOOK_URL) {
+        try {
+          await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+            method: 'POST',
+            mode: 'no-cors', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'add',
+              data: newLogEntry
+            })
+          });
+        } catch (fetchErr) {
+          console.warn("ส่งสำเนาเข้าชีตไม่สำเร็จ:", fetchErr);
+        }
+      }
     } catch (err) {
-      console.warn("Save warning:", err.message);
-      alert("เกิดข้อผิดพลาดในการส่งข้อมูลไปยังเบื้องหลัง (ข้อมูลโชว์บนหน้าเว็บแล้ว แต่ฝั่งชีตอาจมีปัญหา)");
+      console.error("Save error:", err);
+      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล โปรดตรวจสอบอินเทอร์เน็ต");
+    }
+  };
+
+  // อัปเดตรายชื่อพนักงานแบบเรียลไทม์ ทุกคนจะเห็นตรงกัน
+  const updateStaff = async (newStaffList) => {
+    if (!user) return;
+    try {
+      const settingsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'Settings', 'global_settings');
+      await setDoc(settingsDocRef, { staffNames: newStaffList });
+    } catch (err) {
+      console.error("Settings update error:", err);
+    }
+  };
+
+  // ฟังก์ชันนำเข้าข้อมูลจำนวนมาก ป้องกันแอปค้าง
+  const handleImportData = async (importedLogs, onProgress) => {
+    if (!user || importedLogs.length === 0) return false;
+    try {
+      const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs');
+      let current = 0;
+      const CHUNK_SIZE = 50; 
+      
+      for (let i = 0; i < importedLogs.length; i += CHUNK_SIZE) {
+        const chunk = importedLogs.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        
+        chunk.forEach(log => {
+          const newDocRef = doc(logsRef);
+          batch.set(newDocRef, { ...log, timestamp: new Date().toISOString() });
+        });
+
+        await Promise.race([
+          batch.commit(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 15000))
+        ]);
+        
+        current += chunk.length;
+        if (onProgress) onProgress(Math.min(current, importedLogs.length), importedLogs.length);
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+      return true;
+    } catch (err) {
+      console.error("Import error:", err);
+      throw err; 
     }
   };
 
@@ -178,14 +261,8 @@ export default function App() {
     }
   };
 
-  const updateStaff = (newStaffList) => {
-    setSettings({ staffNames: newStaffList });
-    localStorage.setItem('waterQCSettings', JSON.stringify({ staffNames: newStaffList }));
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans overflow-x-hidden">
-      {/* Mobile Header */}
       <header className="md:hidden bg-[#002D62] text-white p-4 flex justify-between items-center sticky top-0 z-50 shadow-md print:hidden">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-[#002D62] font-black">LH</div>
@@ -196,7 +273,6 @@ export default function App() {
         </button>
       </header>
 
-      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-[#002D62] text-white flex flex-col shadow-xl transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:h-screen print:hidden`}>
         <div className="p-8 border-b border-blue-900/50">
           <div className="flex items-center gap-3 mb-2">
@@ -213,15 +289,15 @@ export default function App() {
         </nav>
         <div className="p-6 bg-blue-950/40 text-[10px] text-blue-400 border-t border-blue-900/50 italic flex flex-col gap-1">
           <div className="flex justify-between items-center">
-            <span>ฐานข้อมูล: Google Sheets</span>
+            <span>ฐานข้อมูลเว็บ: {user ? 'พร้อมใช้งาน' : 'รอการเชื่อมต่อ...'}</span>
             {isAuthorized && <button onClick={() => setIsAuthorized(false)} title="Admin Logout" className="hover:text-white transition-colors"><Lock size={12}/></button>}
           </div>
+          {authError && <span className="text-red-400 font-bold">⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อ</span>}
         </div>
       </aside>
 
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
-      {/* Password Modal */}
       {showPasswordInput && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-4">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
@@ -240,35 +316,11 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Content */}
       <main className="flex-1 p-4 md:p-10 w-full overflow-x-hidden print:p-0 print:bg-white relative">
-        {isLoading && (
-          <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
-             <Loader2 size={40} className="animate-spin text-[#002D62] mb-4" />
-             <p className="text-[#002D62] font-bold">กำลังดึงข้อมูลจาก Google Sheets...</p>
-          </div>
-        )}
-        
-        {/* Error Banner */}
-        {sheetError && (
-          <div className="max-w-7xl mx-auto mb-6 bg-red-50 border-l-4 border-red-500 p-4 sm:p-5 rounded-r-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in slide-in-from-top-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="text-red-500 mt-0.5 shrink-0" size={24} />
-              <div>
-                <h3 className="text-red-800 font-bold">เชื่อมต่อ Google Sheets ล้มเหลว (CORS)</h3>
-                <p className="text-red-600 text-xs sm:text-sm mt-1 leading-relaxed max-w-3xl">{sheetError}</p>
-              </div>
-            </div>
-            <button onClick={fetchLogsFromSheets} className="shrink-0 bg-red-100 text-red-700 hover:bg-red-200 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors w-full sm:w-auto justify-center">
-              <RefreshCw size={16} /> ลองใหม่
-            </button>
-          </div>
-        )}
-
         <div className="max-w-7xl mx-auto">
-          {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} hasError={!!sheetError} />}
+          {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} user={user} />}
           {activeTab === 'form' && <EntryForm onSubmit={handleAddLog} staffNames={settings.staffNames} />}
-          {activeTab === 'report' && <ReportView logs={logs} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} />}
+          {activeTab === 'report' && <ReportView logs={logs} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} onImport={handleImportData} />}
           {activeTab === 'settings' && <SettingsView settings={settings} onUpdateStaff={updateStaff} />}
         </div>
       </main>
@@ -291,7 +343,7 @@ function NavItem({ icon, label, active, onClick, isLocked }) {
 }
 
 // --- Dashboard Component ---
-function Dashboard({ logs, period, setPeriod, hasError }) {
+function Dashboard({ logs, period, setPeriod, user }) {
   const stats = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -316,6 +368,10 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
     }));
   }, [logs]);
 
+  let connectionStatus = "กำลังเชื่อมต่อ...", statusIcon = <Loader2 className="text-amber-500 animate-spin" />, statusColor = "border-amber-500";
+  if (user) { connectionStatus = "พร้อมใช้งาน"; statusIcon = <CheckCircle2 className="text-green-500" />; statusColor = "border-green-500"; }
+  else { connectionStatus = "เชื่อมต่อไม่สำเร็จ"; statusIcon = <XCircle className="text-red-500" />; statusColor = "border-red-500"; }
+
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -328,11 +384,11 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
         <StatCard title="ผ่านมาตรฐานทั้งหมด" value={stats.passedTotal} total={stats.total} icon={<CheckCircle2 className="text-green-500" />} color="border-[#002D62]" />
         <StatCard title="ตกเกณฑ์ในเดือนนี้" value={stats.failedThisMonth} isAlert={stats.failedThisMonth > 0} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
         <StatCard 
-          title="สถานะฐานข้อมูลชีต" 
-          value={hasError ? "มีข้อผิดพลาด" : "พร้อมใช้งาน"} 
-          description={hasError ? "ไม่สามารถดึงข้อมูลย้อนหลังได้" : "เชื่อมโยงกับ Google Sheets เรียบร้อย"} 
-          icon={hasError ? <XCircle className="text-red-500" /> : <Database className="text-[#002D62]" />} 
-          color={hasError ? "border-red-500" : "border-[#B8904F]"} 
+          title="สถานะระบบเว็บเรียลไทม์" 
+          value={connectionStatus} 
+          description={user ? "ข้อมูลและรายชื่อซิงค์กันทั้งหมด" : "โปรดตรวจสอบการเชื่อมต่อ"} 
+          icon={statusIcon} 
+          color={statusColor} 
         />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
@@ -383,22 +439,99 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
 }
 
 // --- Report View Component ---
-function ReportView({ logs, sheetUrl }) {
+function ReportView({ logs, sheetUrl, onImport }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(null);
+  const [importMessage, setImportMessage] = useState('');
   
   const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
   const filteredLogs = useMemo(() => {
     return logs.filter(l => { 
       const d = new Date(l.date); 
-      if(isNaN(d.getTime())) return false; // ข้ามบรรทัดที่วันที่ไม่ถูกต้อง
+      if(isNaN(d.getTime())) return false; 
       return d.getMonth() === parseInt(selectedMonth) && d.getFullYear() === parseInt(selectedYear); 
     });
   }, [logs, selectedMonth, selectedYear]);
 
+  const handleCSVImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportProgress({ current: 0, total: 0 });
+    setImportMessage('');
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        const lines = text.split(/\r?\n/);
+        const results = [];
+        
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          
+          const cols = line.split(',');
+          if (cols.length >= 5) {
+            results.push({
+              date: (cols[0] || '').replace(/['"]/g, '').trim(),
+              location: (cols[1] || '').replace(/['"]/g, '').trim(),
+              poolNo: (cols[2] || '').replace(/['"]/g, '').trim() || '1',
+              ph: (cols[3] || '').replace(/['"]/g, '').trim(),
+              tds: (cols[4] || '').replace(/['"]/g, '').trim(),
+              color: (cols[5] || 'ใส').replace(/['"]/g, '').trim(),
+              odor: (cols[6] || 'ไม่มีกลิ่น').replace(/['"]/g, '').trim(),
+              recorder: (cols[7] || '').replace(/['"]/g, '').trim(),
+            });
+          }
+        }
+
+        if (results.length === 0) {
+          setImportMessage("ไม่พบข้อมูลที่ถูกต้องในไฟล์");
+          setIsImporting(false);
+          return;
+        }
+
+        setImportProgress({ current: 0, total: results.length });
+
+        const success = await onImport(results, (current, total) => {
+          setImportProgress({ current, total });
+        });
+
+        if (success) setImportMessage(`นำเข้าข้อมูลสำเร็จ ${results.length} รายการ! ข้อมูลทั้งหมดซิงค์กับผู้ใช้อื่นแล้ว`);
+      } catch (err) {
+        console.error(err);
+        setImportMessage("เกิดข้อผิดพลาดในการนำเข้า");
+      } finally {
+        setIsImporting(false);
+        setImportProgress(null);
+        e.target.value = null; 
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500 relative">
+      {importMessage && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 text-center">
+            <div className="w-16 h-16 bg-blue-50 text-[#002D62] rounded-full flex items-center justify-center mb-6 mx-auto">
+              <Info size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-4">แจ้งเตือนระบบ</h3>
+            <p className="text-gray-600 mb-8 leading-relaxed">{importMessage}</p>
+            <button onClick={() => setImportMessage('')} className="w-full py-3 bg-[#002D62] hover:bg-[#003d82] text-white rounded-xl font-bold shadow-lg transition-all">
+              ตกลง
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 print:hidden">
         <div>
           <h2 className="text-2xl font-bold text-[#002D62]">รายงานสรุปคุณภาพน้ำ</h2>
@@ -435,10 +568,21 @@ function ReportView({ logs, sheetUrl }) {
           <Download size={20} /> ส่งออก (CSV)
         </button>
         
-        <button onClick={() => window.open(sheetUrl, '_blank')} className="flex items-center justify-center gap-3 bg-white border-2 border-dashed border-gray-300 text-gray-600 p-4 rounded-2xl font-bold hover:bg-gray-50 transition-all shadow-sm">
-          <Database size={20} className="text-[#002D62]" /> 
-          <span>เปิดชีตเพื่อวางข้อมูลเก่า</span>
-        </button>
+        <label className="flex items-center justify-center gap-3 bg-white border-2 border-dashed border-gray-300 text-gray-600 p-4 rounded-2xl font-bold hover:bg-gray-50 cursor-pointer transition-all shadow-sm relative overflow-hidden">
+          {isImporting ? (
+            <>
+              <div className="absolute inset-y-0 left-0 bg-blue-100 transition-all duration-300 z-0" style={{ width: importProgress && importProgress.total > 0 ? `${(importProgress.current / importProgress.total) * 100}%` : '0%' }}></div>
+              <Loader2 size={20} className="animate-spin text-[#002D62] relative z-10" /> 
+              <span className="relative z-10 text-[#002D62]">{importProgress && importProgress.total > 0 ? `นำเข้า ${importProgress.current}/${importProgress.total}` : 'เตรียมข้อมูล...'}</span>
+            </>
+          ) : (
+            <>
+              <Upload size={20} className="text-[#B8904F]" />
+              <span>อัปโหลดเก่าเข้าเว็บ</span>
+              <input type="file" accept=".csv" onChange={handleCSVImport} className="hidden" disabled={isImporting} />
+            </>
+          )}
+        </label>
 
         <button onClick={() => window.open(sheetUrl, '_blank')} className="flex items-center justify-center gap-3 bg-[#16A34A] text-white p-4 rounded-2xl font-bold shadow-lg hover:bg-[#15803d] transition-all">
           <Share2 size={20} /> เปิด Google Sheets
@@ -504,6 +648,13 @@ function EntryForm({ onSubmit, staffNames }) {
   const [alerts, setAlerts] = useState({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+  // ป้องกันไม่ให้เกิด Error ถ้ารายชื่อยังโหลดไม่เสร็จ
+  useEffect(() => {
+    if (staffNames.length > 0 && (!formData.recorder || !staffNames.includes(formData.recorder))) {
+      setFormData(p => ({ ...p, recorder: staffNames[0] }));
+    }
+  }, [staffNames, formData.recorder]);
+
   const validate = (name, val) => {
     let msg = "";
     const num = parseFloat(val);
@@ -534,7 +685,7 @@ function EntryForm({ onSubmit, staffNames }) {
         <div className="bg-[#002D62] p-8 md:p-10 text-white flex justify-between items-center">
           <div>
             <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3"><PlusCircle size={28} className="text-[#B8904F]" /> บันทึกผลการตรวจคุณภาพน้ำ</h2>
-            <p className="text-blue-200 mt-1 opacity-80 text-xs md:text-sm">ตรวจสอบเกณฑ์อัตโนมัติและส่งข้อมูลไปที่ Google Sheets</p>
+            <p className="text-blue-200 mt-1 opacity-80 text-xs md:text-sm">ข้อมูลบันทึกลงเว็บทันที และส่งสำเนาเข้าชีตอัตโนมัติ</p>
           </div>
           <ClipboardList size={48} className="opacity-20 hidden sm:block" />
         </div>
@@ -556,7 +707,7 @@ function EntryForm({ onSubmit, staffNames }) {
             
             <FormField label="เจ้าหน้าที่ผู้ตรวจ">
               <select name="recorder" value={formData.recorder} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-bold">
-                {staffNames.length > 0 ? staffNames.map(s => <option key={s} value={s}>{s}</option>) : <option value="">กรุณาเพิ่มชื่อในตั้งค่า</option>}
+                {staffNames.length > 0 ? staffNames.map(s => <option key={s} value={s}>{s}</option>) : <option value="">กำลังโหลด...</option>}
               </select>
             </FormField>
           </div>
@@ -576,7 +727,7 @@ function EntryForm({ onSubmit, staffNames }) {
           </div>
 
           <button type="submit" className="w-full bg-[#002D62] hover:bg-[#003d82] text-white py-5 rounded-2xl font-black text-lg md:text-xl shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3">
-            <CheckCircle2 size={24} /> ยืนยันการบันทึกไปยัง Google Sheets
+            <CheckCircle2 size={24} /> ยืนยันบันทึกผล
           </button>
         </form>
       </div>
