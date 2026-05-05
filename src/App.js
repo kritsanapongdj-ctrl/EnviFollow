@@ -175,33 +175,35 @@ export default function App() {
     }
   };
 
-  // ฟังก์ชันนำเข้าข้อมูลจำนวนมาก (Batch Import - แบบแบ่งชุด)
+  // ฟังก์ชันนำเข้าข้อมูลจำนวนมาก (แก้ไขใหม่: ให้ทยอยส่งพร้อม Delay ป้องกันการค้าง)
   const handleImportData = async (importedLogs, onProgress) => {
     if (!user || importedLogs.length === 0) return false;
     try {
       const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs');
+      let current = 0;
       
-      // Firebase เขียนรวดเดียวได้สูงสุด 500 รายการ เราจะแบ่งชุดละ 400
-      const CHUNK_SIZE = 400; 
+      // ส่งทีละ 25 รายการ เพื่อความเสถียร
+      const CHUNK_SIZE = 25; 
       
       for (let i = 0; i < importedLogs.length; i += CHUNK_SIZE) {
         const chunk = importedLogs.slice(i, i + CHUNK_SIZE);
-        const batch = writeBatch(db);
         
-        chunk.forEach(log => {
-          const newDocRef = doc(logsRef);
-          batch.set(newDocRef, {
-            ...log,
-            timestamp: new Date().toISOString()
-          });
-        });
-
-        await batch.commit(); // รอให้เขียนเสร็จทีละชุด
+        // ใช้ Promise.all เพื่อส่ง request เล็กๆ พร้อมกัน
+        const promises = chunk.map(log => 
+          addDoc(logsRef, { ...log, timestamp: new Date().toISOString() })
+        );
         
-        // อัปเดต Progress
+        await Promise.all(promises);
+        
+        current += chunk.length;
+        
+        // อัปเดต UI หน้าจอ
         if (onProgress) {
-          onProgress(Math.min(i + CHUNK_SIZE, importedLogs.length), importedLogs.length);
+          onProgress(Math.min(current, importedLogs.length), importedLogs.length);
         }
+        
+        // พักการทำงาน 0.3 วินาที ให้เบราว์เซอร์หายใจ ป้องกันอาการนิ่ง/ค้าง
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
       
       return true;
