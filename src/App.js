@@ -10,7 +10,7 @@ import {
 // ----------------------------------------------------------------------
 // 🔥 ตั้งค่า Google Sheets Webhook URL (นำ URL ใหม่มาใส่ที่นี่!)
 // ----------------------------------------------------------------------
-const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8b9Dgr3VLY76VN5DnhdjiieO3N6w1J93Tj1gT7BNb6UTnxQG3Nup4HOGp5jDOT3x8IA/exec";
+const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyBJbccynt4MhK62bW6x-aygqQRBdyWLDix9Ll_ab4L2rRC9dlpEUVzzajD-1Ad5kR_NA/exec";
 const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit";
 
 const STANDARDS = {
@@ -297,6 +297,7 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
     return { uniqueLocations, totalInspections, failedCount };
   }, [logs, period]);
 
+  // ประมวลผลกราฟ: จัดกลุ่มเป็น "ค่าเฉลี่ยรายเดือน" เพื่อให้ดูกราฟง่ายขึ้น
   const chartData = useMemo(() => {
     const cutoffDate = new Date();
     cutoffDate.setMonth(cutoffDate.getMonth() - period);
@@ -307,12 +308,38 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
       return d >= cutoffDate; 
     });
 
-    // นำข้อมูลมาพล็อตเรียงตามเวลา
-    return periodLogs.sort((a, b) => new Date(a.date) - new Date(b.date)).map(l => ({ 
-      name: new Date(l.date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }) === 'Invalid Date' ? l.date : new Date(l.date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }), 
-      ph: parseFloat(l.ph) || 0, 
-      tds: parseFloat(l.tds) || 0 
-    }));
+    // ใช้ Object เพื่อจัดกลุ่มข้อมูลตามเดือน-ปี
+    const groupedData = {};
+    
+    periodLogs.forEach(l => {
+      const d = new Date(l.date);
+      const monthYear = d.toLocaleDateString('th-TH', { month: 'short', year: '2-digit' });
+      const sortKey = `${d.getFullYear()}${String(d.getMonth()).padStart(2, '0')}`; // สำหรับเรียงลำดับให้ถูกเดือน
+      
+      if (!groupedData[monthYear]) {
+        groupedData[monthYear] = {
+          name: monthYear,
+          sortKey: sortKey,
+          phSum: 0,
+          tdsSum: 0,
+          count: 0
+        };
+      }
+      
+      groupedData[monthYear].phSum += parseFloat(l.ph) || 0;
+      groupedData[monthYear].tdsSum += parseFloat(l.tds) || 0;
+      groupedData[monthYear].count += 1;
+    });
+
+    // นำข้อมูลที่จัดกลุ่มแล้วมาคำนวณค่าเฉลี่ย และเรียงตามลำดับเวลา
+    return Object.values(groupedData)
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .map(item => ({
+        name: item.name,
+        ph: Number((item.phSum / item.count).toFixed(2)),
+        tds: Number((item.tdsSum / item.count).toFixed(0))
+      }));
+      
   }, [logs, period]);
 
   return (
@@ -336,8 +363,8 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
         />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
-        <ChartBox title={`แนวโน้มค่า pH (${period} เดือน)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
-        <ChartBox title={`แนวโน้มค่า TDS (${period} เดือน)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
+        <ChartBox title={`แนวโน้มค่าเฉลี่ย pH รายเดือน (${period} เดือน)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
+        <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS รายเดือน (${period} เดือน)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
       </div>
     </div>
   );
@@ -369,7 +396,10 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} style={{ fontSize: '11px' }} />
               <YAxis axisLine={false} tickLine={false} style={{ fontSize: '11px' }} domain={yDomain} />
-              <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+              <Tooltip 
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
+                formatter={(value) => [value, `ค่าเฉลี่ย ${dataKey.toUpperCase()}`]}
+              />
               {limits.map((limit, idx) => (<ReferenceLine key={idx} y={limit} stroke="#ef4444" strokeDasharray="5 5" label={{ position: 'right', value: `เกณฑ์ ${limit}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} />))}
               <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={3} dot={{ r: 4, fill: color, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
             </LineChart>
