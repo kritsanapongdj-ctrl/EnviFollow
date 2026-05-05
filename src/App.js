@@ -45,7 +45,8 @@ import {
   Printer,
   Lock,
   Loader2,
-  Upload
+  Upload,
+  Info
 } from 'lucide-react';
 
 // ----------------------------------------------------------------------
@@ -175,12 +176,12 @@ export default function App() {
   };
 
   // ฟังก์ชันนำเข้าข้อมูลจำนวนมาก (Batch Import - แบบแบ่งชุด)
-  const handleImportData = async (importedLogs) => {
+  const handleImportData = async (importedLogs, onProgress) => {
     if (!user || importedLogs.length === 0) return false;
     try {
       const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'Water_Quality_Logs');
       
-      // Firebase เขียนรวดเดียวได้สูงสุด 500 รายการ เราจะแบ่งชุดละ 400 เพื่อความปลอดภัย
+      // Firebase เขียนรวดเดียวได้สูงสุด 500 รายการ เราจะแบ่งชุดละ 400
       const CHUNK_SIZE = 400; 
       
       for (let i = 0; i < importedLogs.length; i += CHUNK_SIZE) {
@@ -195,8 +196,12 @@ export default function App() {
           });
         });
 
-        // รอให้เขียนเสร็จทีละชุด
-        await batch.commit();
+        await batch.commit(); // รอให้เขียนเสร็จทีละชุด
+        
+        // อัปเดต Progress
+        if (onProgress) {
+          onProgress(Math.min(i + CHUNK_SIZE, importedLogs.length), importedLogs.length);
+        }
       }
       
       return true;
@@ -406,7 +411,12 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
 function ReportView({ logs, onImport }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  
+  // States สำหรับระบบอัปโหลดและแจ้งเตือน
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(null); // { current, total }
+  const [importMessage, setImportMessage] = useState(''); // ใช้แทน alert()
+  
   const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
   const filteredLogs = useMemo(() => {
@@ -419,6 +429,9 @@ function ReportView({ logs, onImport }) {
     if (!file) return;
 
     setIsImporting(true);
+    setImportProgress({ current: 0, total: 0 });
+    setImportMessage('');
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
@@ -433,39 +446,70 @@ function ReportView({ logs, onImport }) {
           if (!line) continue;
           
           const cols = line.split(',');
-          // คาดหวังรูปแบบ: วันที่, โครงการ, บ่อที่, pH, TDS, สี, กลิ่น, ผู้บันทึก
-          if (cols.length >= 8) {
+          // ยืดหยุ่นขึ้น ถ้ายาวเกิน 5 คอลัมน์ก็นำเข้าได้
+          if (cols.length >= 5) {
             results.push({
-              date: cols[0].replace(/['"]/g, '').trim(),
-              location: cols[1].replace(/['"]/g, '').trim(),
-              poolNo: cols[2].replace(/['"]/g, '').trim() || '1',
-              ph: cols[3].replace(/['"]/g, '').trim(),
-              tds: cols[4].replace(/['"]/g, '').trim(),
-              color: cols[5].replace(/['"]/g, '').trim(),
-              odor: cols[6].replace(/['"]/g, '').trim(),
-              recorder: cols[7].replace(/['"]/g, '').trim(),
+              date: (cols[0] || '').replace(/['"]/g, '').trim(),
+              location: (cols[1] || '').replace(/['"]/g, '').trim(),
+              poolNo: (cols[2] || '').replace(/['"]/g, '').trim() || '1',
+              ph: (cols[3] || '').replace(/['"]/g, '').trim(),
+              tds: (cols[4] || '').replace(/['"]/g, '').trim(),
+              color: (cols[5] || 'ใส').replace(/['"]/g, '').trim(),
+              odor: (cols[6] || 'ไม่มีกลิ่น').replace(/['"]/g, '').trim(),
+              recorder: (cols[7] || '').replace(/['"]/g, '').trim(),
             });
           }
         }
 
-        const success = await onImport(results);
+        if (results.length === 0) {
+          setImportMessage("ไม่พบข้อมูลที่ถูกต้องในไฟล์ กรุณาตรวจสอบรูปแบบตาราง CSV (ต้องมีคอลัมน์อย่างน้อย 5 ช่อง)");
+          setIsImporting(false);
+          return;
+        }
+
+        setImportProgress({ current: 0, total: results.length });
+
+        // นำเข้าข้อมูลพร้อมอัปเดตสถานะ Progress กลับมา
+        const success = await onImport(results, (current, total) => {
+          setImportProgress({ current, total });
+        });
+
         if (success) {
-          alert(`นำเข้าข้อมูล ${results.length} รายการ สำเร็จ!`);
+          setImportMessage(`นำเข้าข้อมูลสำเร็จจำนวน ${results.length} รายการ!`);
         } else {
-          alert("ไม่สามารถนำเข้าข้อมูลได้ โปรดตรวจสอบการเชื่อมต่อ");
+          setImportMessage("ไม่สามารถนำเข้าข้อมูลได้ โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือฐานข้อมูล");
         }
       } catch (err) {
-        alert("รูปแบบไฟล์ไม่ถูกต้อง กรุณาใช้ไฟล์ .csv ที่จัดเรียงคอลัมน์ถูกต้อง");
+        console.error(err);
+        setImportMessage("รูปแบบไฟล์ไม่ถูกต้อง หรือเกิดข้อผิดพลาดในการอ่านไฟล์");
       } finally {
         setIsImporting(false);
-        e.target.value = null; // รีเซ็ต input
+        setImportProgress(null);
+        e.target.value = null; // รีเซ็ต input ให้รับไฟล์เดิมซ้ำได้
       }
     };
     reader.readAsText(file);
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500 relative">
+      
+      {/* Custom Modal Notification (ใช้แทน Alert เพื่อไม่ให้ค้างบน Canvas) */}
+      {importMessage && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 text-center">
+            <div className="w-16 h-16 bg-blue-50 text-[#002D62] rounded-full flex items-center justify-center mb-6 mx-auto">
+              <Info size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-4">แจ้งเตือน</h3>
+            <p className="text-gray-600 mb-8 leading-relaxed">{importMessage}</p>
+            <button onClick={() => setImportMessage('')} className="w-full py-3 bg-[#002D62] hover:bg-[#003d82] text-white rounded-xl font-bold shadow-lg transition-all">
+              ตกลง
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 print:hidden">
         <div>
           <h2 className="text-2xl font-bold text-[#002D62]">รายงานสรุปคุณภาพน้ำ</h2>
@@ -502,11 +546,28 @@ function ReportView({ logs, onImport }) {
           <Download size={20} /> ส่งออก (CSV)
         </button>
         
-        {/* ปุ่มนำเข้าข้อมูล */}
-        <label className="flex items-center justify-center gap-3 bg-white border-2 border-dashed border-gray-300 text-gray-600 p-4 rounded-2xl font-bold hover:bg-gray-50 cursor-pointer transition-all shadow-sm">
-          {isImporting ? <Loader2 size={20} className="animate-spin text-[#002D62]" /> : <Upload size={20} className="text-[#B8904F]" />} 
-          <span>{isImporting ? 'กำลังนำเข้า...' : 'อัปโหลด .CSV'}</span>
-          <input type="file" accept=".csv" onChange={handleCSVImport} className="hidden" disabled={isImporting} />
+        {/* ปุ่มนำเข้าข้อมูลแบบมี Progress Bar */}
+        <label className="flex items-center justify-center gap-3 bg-white border-2 border-dashed border-gray-300 text-gray-600 p-4 rounded-2xl font-bold hover:bg-gray-50 cursor-pointer transition-all shadow-sm relative overflow-hidden">
+          {isImporting ? (
+            <>
+              <div 
+                className="absolute inset-y-0 left-0 bg-blue-100 transition-all duration-300 z-0" 
+                style={{ width: importProgress && importProgress.total > 0 ? `${(importProgress.current / importProgress.total) * 100}%` : '0%' }}
+              ></div>
+              <Loader2 size={20} className="animate-spin text-[#002D62] relative z-10" /> 
+              <span className="relative z-10 text-[#002D62]">
+                {importProgress && importProgress.total > 0 
+                  ? `นำเข้า ${importProgress.current}/${importProgress.total}` 
+                  : 'เตรียมข้อมูล...'}
+              </span>
+            </>
+          ) : (
+            <>
+              <Upload size={20} className="text-[#B8904F]" />
+              <span>อัปโหลด .CSV</span>
+              <input type="file" accept=".csv" onChange={handleCSVImport} className="hidden" disabled={isImporting} />
+            </>
+          )}
         </label>
 
         <button onClick={() => window.open('https://docs.google.com/spreadsheets/', '_blank')} className="flex items-center justify-center gap-3 bg-[#16A34A] text-white p-4 rounded-2xl font-bold shadow-lg hover:bg-[#15803d] transition-all">
