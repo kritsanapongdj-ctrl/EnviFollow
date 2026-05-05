@@ -10,8 +10,8 @@ import {
 // ----------------------------------------------------------------------
 // 🔥 ตั้งค่า Google Sheets Webhook URL (นำ URL ใหม่มาใส่ที่นี่!)
 // ----------------------------------------------------------------------
-const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyBJbccynt4MhK62bW6x-aygqQRBdyWLDix9Ll_ab4L2rRC9dlpEUVzzajD-1Ad5kR_NA/exec";
-const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/1Uelo0HpxYJsZdI5Y451anwk2vK9L9y6jIWQIJFS6vow/edit?gid=0#gid=0";
+const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8b9Dgr3VLY76VN5DnhdjiieO3N6w1J93Tj1gT7BNb6UTnxQG3Nup4HOGp5jDOT3x8IA/exec";
+const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit";
 
 const STANDARDS = {
   ph: { min: 5.5, max: 9.0 },
@@ -271,28 +271,49 @@ function NavItem({ icon, label, active, onClick, isLocked }) {
 // --- Dashboard Component ---
 function Dashboard({ logs, period, setPeriod, hasError }) {
   const stats = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const monthlyLogs = logs.filter(l => { 
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - period);
+    
+    // กรองข้อมูลตามระยะเวลาที่เลือก (3 หรือ 6 เดือน)
+    const periodLogs = logs.filter(l => { 
       const d = new Date(l.date); 
       if(isNaN(d.getTime())) return false;
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear; 
+      return d >= cutoffDate; 
     });
     
-    const passedTotal = logs.filter(l => parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max).length;
-    const failedThisMonth = monthlyLogs.filter(l => parseFloat(l.ph) < STANDARDS.ph.min || parseFloat(l.ph) > STANDARDS.ph.max || parseFloat(l.tds) > STANDARDS.tds.max).length;
+    // 1. จำนวนโครงการที่ตรวจ (โครงการที่ไม่ซ้ำกัน)
+    const uniqueLocations = new Set(periodLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
     
-    return { passedTotal, failedThisMonth, total: logs.length };
-  }, [logs]);
+    // 2. จำนวนบ่อบำบัดที่ตรวจ (นับรายการทั้งหมด)
+    const totalInspections = periodLogs.length;
+
+    // 3. จำนวนที่ไม่ผ่านเกณฑ์
+    const failedCount = periodLogs.filter(l => 
+      parseFloat(l.ph) < STANDARDS.ph.min || 
+      parseFloat(l.ph) > STANDARDS.ph.max || 
+      parseFloat(l.tds) > STANDARDS.tds.max
+    ).length;
+    
+    return { uniqueLocations, totalInspections, failedCount };
+  }, [logs, period]);
 
   const chartData = useMemo(() => {
-    return [...logs].reverse().slice(-10).map(l => ({ 
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - period);
+    
+    const periodLogs = logs.filter(l => { 
+      const d = new Date(l.date); 
+      if(isNaN(d.getTime())) return false;
+      return d >= cutoffDate; 
+    });
+
+    // นำข้อมูลมาพล็อตเรียงตามเวลา
+    return periodLogs.sort((a, b) => new Date(a.date) - new Date(b.date)).map(l => ({ 
       name: new Date(l.date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }) === 'Invalid Date' ? l.date : new Date(l.date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }), 
       ph: parseFloat(l.ph) || 0, 
       tds: parseFloat(l.tds) || 0 
     }));
-  }, [logs]);
+  }, [logs, period]);
 
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
@@ -302,20 +323,21 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
           {[3, 6].map(m => (<button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-6 py-2 rounded-md text-sm font-bold ${period === m ? 'bg-[#002D62] text-white' : 'text-gray-500'}`}>{m} เดือน</button>))}
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-        <StatCard title="ผ่านมาตรฐานทั้งหมด" value={stats.passedTotal} total={stats.total} icon={<CheckCircle2 className="text-green-500" />} color="border-[#002D62]" />
-        <StatCard title="ตกเกณฑ์ในเดือนนี้" value={stats.failedThisMonth} isAlert={stats.failedThisMonth > 0} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        <StatCard title="โครงการที่ตรวจ" value={stats.uniqueLocations} description={`ในช่วง ${period} เดือนย้อนหลัง`} icon={<LayoutDashboard className="text-[#002D62]" />} color="border-[#002D62]" />
+        <StatCard title="บ่อบำบัดที่ตรวจ" value={stats.totalInspections} description={`จำนวนการบันทึกผลทั้งหมด`} icon={<ClipboardList className="text-blue-500" />} color="border-blue-500" />
+        <StatCard title="ไม่ผ่านเกณฑ์" value={stats.failedCount} total={stats.totalInspections} description={`จำนวนที่ไม่ผ่านมาตรฐาน`} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
         <StatCard 
-          title="สถานะเซิร์ฟเวอร์ (Google Sheets)" 
-          value={hasError ? "ออฟไลน์" : "ออนไลน์ 100%"} 
-          description={hasError ? "ใช้งานด้วยข้อมูลสำรองในเครื่อง" : "ข้อมูลซิงค์กันทุกอุปกรณ์แบบเรียลไทม์"} 
-          icon={hasError ? <XCircle className="text-red-500" /> : <Database className="text-[#002D62]" />} 
-          color={hasError ? "border-red-500" : "border-[#B8904F]"} 
+          title="เซิร์ฟเวอร์ (Sheets)" 
+          value={hasError ? "ออฟไลน์" : "ออนไลน์"} 
+          description={hasError ? "ใช้ข้อมูลในเครื่อง" : "ข้อมูลซิงค์เรียลไทม์"} 
+          icon={hasError ? <XCircle className="text-red-500" /> : <Database className="text-[#16A34A]" />} 
+          color={hasError ? "border-red-500" : "border-[#16A34A]"} 
         />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
-        <ChartBox title="แนวโน้มค่า pH (เป้าหมาย 5.5 - 9.0)" data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
-        <ChartBox title="แนวโน้มค่า TDS (ไม่เกิน 1,000 mg/L)" data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
+        <ChartBox title={`แนวโน้มค่า pH (${period} เดือน)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
+        <ChartBox title={`แนวโน้มค่า TDS (${period} เดือน)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
       </div>
     </div>
   );
