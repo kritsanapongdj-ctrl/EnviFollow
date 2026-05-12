@@ -11,7 +11,7 @@ import {
 // 🔥 ตั้งค่า Google Sheets Webhook URL 
 // นำ URL ใหม่ที่เพิ่ง Deploy เป็น "Everyone (ทุกคน)" มาวางในเครื่องหมายคำพูดด้านล่างนี้!
 // ----------------------------------------------------------------------
-const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8b9Dgr3VLY76VN5DnhdjiieO3N6w1J93Tj1gT7BNb6UTnxQG3Nup4HOGp5jDOT3x8IA/exec";
+const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyBJbccynt4MhK62bW6x-aygqQRBdyWLDix9Ll_ab4L2rRC9dlpEUVzzajD-1Ad5kR_NA/exec";
 const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit";
 
 const STANDARDS = {
