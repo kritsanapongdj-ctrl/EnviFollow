@@ -8,9 +8,10 @@ import {
 } from 'lucide-react';
 
 // ----------------------------------------------------------------------
-// 🔥 ตั้งค่า Google Sheets Webhook URL (นำ URL ใหม่มาใส่ที่นี่!)
+// 🔥 ตั้งค่า Google Sheets Webhook URL 
+// นำ URL ใหม่ที่เพิ่ง Deploy เป็น "Everyone (ทุกคน)" มาวางในเครื่องหมายคำพูดด้านล่างนี้!
 // ----------------------------------------------------------------------
-const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyBJbccynt4MhK62bW6x-aygqQRBdyWLDix9Ll_ab4L2rRC9dlpEUVzzajD-1Ad5kR_NA/exec";
+const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8b9Dgr3VLY76VN5DnhdjiieO3N6w1J93Tj1gT7BNb6UTnxQG3Nup4HOGp5jDOT3x8IA/exec";
 const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit";
 
 const STANDARDS = {
@@ -38,14 +39,17 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [passError, setPassError] = useState(false);
 
-  // ดึงข้อมูลทั้งหมดจาก Google Sheets
+  // ดึงข้อมูลทั้งหมดจาก Google Sheets (อัปเดตระบบป้องกัน Cache และ CORS)
   const fetchLogsFromSheets = async () => {
     try {
       setIsLoading(true);
       setSyncStatus('loading');
       setSheetError(null);
       
-      const response = await fetch(GOOGLE_SHEETS_WEBHOOK_URL);
+      // เพิ่ม Parameter เวลาปัจจุบัน เพื่อบังคับให้โหลดข้อมูลใหม่เสมอ (ป้องกันเบราว์เซอร์จำ Cache เก่า)
+      const urlWithTimestamp = `${GOOGLE_SHEETS_WEBHOOK_URL}?t=${new Date().getTime()}`;
+      
+      const response = await fetch(urlWithTimestamp);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       
       const text = await response.text();
@@ -53,7 +57,7 @@ export default function App() {
       try {
         result = JSON.parse(text);
       } catch (e) {
-        throw new Error("ระบบถูกบล็อก: โปรดกลับไปหน้า Google Apps Script แล้ว Deploy แบบ 'New Deployment' และตั้งค่าผู้เข้าถึงเป็น 'ทุกคน (Anyone)'");
+        throw new Error("ข้อมูลตอบกลับจาก Google Sheets ไม่ถูกต้อง (โปรดเช็คให้แน่ใจว่าตอน Deploy ได้ตั้งค่า Who has access เป็น 'Anyone')");
       }
       
       if (result && result.status === 'success') {
@@ -68,12 +72,17 @@ export default function App() {
         }
         setSyncStatus('success');
       } else {
-        throw new Error("รูปแบบข้อมูลจากตารางไม่ถูกต้อง");
+        throw new Error(result.message || "รูปแบบข้อมูลจากตารางไม่ถูกต้อง");
       }
     } catch (error) {
-      console.warn("Fetch Error:", error.message);
+      console.warn("Fetch Error Details:", error.message);
       setSyncStatus('error');
-      setSheetError(error.message);
+      
+      if (error.name === 'TypeError' || error.message.includes('Failed to fetch')) {
+        setSheetError("การเชื่อมต่อถูกบล็อก: URL เก่าหมดอายุ หรือยังไม่ได้ตั้งค่าสิทธิ์ให้ 'ทุกคน (Anyone)' เข้าถึง Web App ได้");
+      } else {
+        setSheetError(error.message);
+      }
       
       // ดึงข้อมูลสำรองมาแสดง ถ้าเชื่อมต่อ Cloud ไม่ได้
       const cachedLogs = localStorage.getItem('waterQC_LogsCache');
@@ -117,7 +126,7 @@ export default function App() {
         body: JSON.stringify({ action: 'add', data: newLogEntry })
       });
     } catch (err) {
-      console.error(err);
+      console.error("Save Error Details:", err);
       alert("ไม่สามารถอัปโหลดข้อมูลขึ้น Cloud ได้ ข้อมูลถูกบันทึกไว้ในเครื่องนี้แล้ว");
     }
   };
@@ -134,7 +143,7 @@ export default function App() {
         body: JSON.stringify({ action: 'update_settings', data: { staffNames: newStaffList } })
       });
     } catch (err) {
-      console.error(err);
+      console.error("Update Staff Error:", err);
     }
   };
 
@@ -270,22 +279,22 @@ function NavItem({ icon, label, active, onClick, isLocked }) {
 
 // --- Dashboard Component ---
 function Dashboard({ logs, period, setPeriod, hasError }) {
-  const stats = useMemo(() => {
-    // 1. กรองข้อมูลเฉพาะ "รายเดือน" (เดือนปัจจุบัน) สำหรับ Dashboard Cards
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
+  const stats = useMemo(() => {
+    // 1. กรองข้อมูลเฉพาะ "รายเดือน" (ตามเดือนที่เลือก) สำหรับ Dashboard Cards
     const monthlyLogs = logs.filter(l => { 
       const d = new Date(l.date); 
       if(isNaN(d.getTime())) return false;
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear; 
+      return d.getMonth() === parseInt(selectedMonth) && d.getFullYear() === parseInt(selectedYear); 
     });
     
     // 2. จำนวนโครงการที่ตรวจ (ยึดตามการบันทึกผล ในฟิลด์ "โครงการ" ไม่ซ้ำกัน)
     const uniqueLocations = new Set(monthlyLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
     
-    // 3. จำนวนบ่อบำบัดที่ตรวจ (นับจากรายการทั้งหมดที่บันทึกในเดือนนี้)
+    // 3. จำนวนบ่อบำบัดที่ตรวจ (นับจากรายการทั้งหมดที่บันทึกในเดือนที่เลือก)
     const totalInspections = monthlyLogs.length;
 
     // 4. จำนวนที่ไม่ผ่านเกณฑ์ (ยึดตามโครงการ - ถ้าโครงการไหนมีบ่อใดบ่อหนึ่งตกเกณฑ์ ให้นับโครงการนั้นเป็น 1)
@@ -298,17 +307,19 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
     const uniqueFailedLocations = new Set(failedLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
     
     return { uniqueLocations, totalInspections, failedCount: uniqueFailedLocations };
-  }, [logs]);
+  }, [logs, selectedMonth, selectedYear]);
 
-  // ประมวลผลกราฟ: จัดกลุ่มเป็น "ค่าเฉลี่ยรายเดือน" และกรองตาม 3/6 เดือน
+  // ประมวลผลกราฟ: จัดกลุ่มเป็น "ค่าเฉลี่ยรายเดือน" และกรองตาม 3/6 เดือน ย้อนหลังจากเดือนที่เลือก
   const chartData = useMemo(() => {
-    const cutoffDate = new Date();
-    cutoffDate.setMonth(cutoffDate.getMonth() - period);
+    // หาวันที่สิ้นสุด (วันสุดท้ายของเดือนที่เลือก)
+    const endDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59);
+    // หาวันที่เริ่มต้น (ย้อนหลัง period เดือน โดยนับเดือนที่เลือกเป็นเดือนที่ 1)
+    const startDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - period + 1, 1);
     
     const periodLogs = logs.filter(l => { 
       const d = new Date(l.date); 
       if(isNaN(d.getTime())) return false;
-      return d >= cutoffDate; 
+      return d >= startDate && d <= endDate; 
     });
 
     // ใช้ Object เพื่อจัดกลุ่มข้อมูลตามเดือน-ปี
@@ -343,20 +354,32 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
         tds: Number((item.tdsSum / item.count).toFixed(0))
       }));
       
-  }, [logs, period]);
+  }, [logs, period, selectedMonth, selectedYear]);
 
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h2 className="text-2xl md:text-3xl font-bold text-[#002D62]">ภาพรวมคุณภาพน้ำ</h2>
-        <div className="flex bg-white rounded-lg shadow-sm border p-1 w-full sm:w-auto">
-          {[3, 6].map(m => (<button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-6 py-2 rounded-md text-sm font-bold ${period === m ? 'bg-[#002D62] text-white' : 'text-gray-500'}`}>{m} เดือน</button>))}
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          {/* ตัวกรอง เดือน/ปี */}
+          <div className="flex gap-2 w-full sm:w-auto">
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 sm:flex-none p-2 rounded-lg border-gray-200 bg-white border text-sm font-semibold outline-none focus:border-[#002D62] shadow-sm">
+              {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
+            <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="flex-1 sm:flex-none p-2 rounded-lg border-gray-200 bg-white border text-sm font-semibold outline-none focus:border-[#002D62] shadow-sm">
+              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          {/* ปุ่มเลือก 3/6 เดือน สำหรับกราฟ */}
+          <div className="flex bg-white rounded-lg shadow-sm border p-1 w-full sm:w-auto">
+            {[3, 6].map(m => (<button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-bold ${period === m ? 'bg-[#002D62] text-white' : 'text-gray-500'}`}>กราฟ {m} เดือน</button>))}
+          </div>
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <StatCard title="โครงการที่ตรวจ (เดือนนี้)" value={stats.uniqueLocations} description={`จำนวนโครงการทั้งหมด`} icon={<LayoutDashboard className="text-[#002D62]" />} color="border-[#002D62]" />
-        <StatCard title="บ่อบำบัดที่ตรวจ (เดือนนี้)" value={stats.totalInspections} description={`จำนวนครั้งที่บันทึกผล`} icon={<ClipboardList className="text-blue-500" />} color="border-blue-500" />
-        <StatCard title="โครงการที่ไม่ผ่าน (เดือนนี้)" value={stats.failedCount} total={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
+        <StatCard title={`โครงการที่ตรวจ (${months[selectedMonth]})`} value={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<LayoutDashboard className="text-[#002D62]" />} color="border-[#002D62]" />
+        <StatCard title={`บ่อบำบัดที่ตรวจ (${months[selectedMonth]})`} value={stats.totalInspections} description={`จำนวนครั้งที่บันทึกผล`} icon={<ClipboardList className="text-blue-500" />} color="border-blue-500" />
+        <StatCard title={`โครงการที่ไม่ผ่าน (${months[selectedMonth]})`} value={stats.failedCount} total={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
         <StatCard 
           title="เซิร์ฟเวอร์ (Sheets)" 
           value={hasError ? "ออฟไลน์" : "ออนไลน์"} 
@@ -366,8 +389,8 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
         />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
-        <ChartBox title={`แนวโน้มค่าเฉลี่ย pH รายเดือน (${period} เดือน)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
-        <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS รายเดือน (${period} เดือน)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
+        <ChartBox title={`แนวโน้มค่าเฉลี่ย pH (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
+        <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
       </div>
     </div>
   );
