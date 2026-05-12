@@ -10,7 +10,7 @@ import {
 // ----------------------------------------------------------------------
 // 🔥 ตั้งค่า Google Sheets Webhook URL (นำ URL ใหม่มาใส่ที่นี่!)
 // ----------------------------------------------------------------------
-const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyBJbccynt4MhK62bW6x-aygqQRBdyWLDix9Ll_ab4L2rRC9dlpEUVzzajD-1Ad5kR_NA/exec";
+const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8b9Dgr3VLY76VN5DnhdjiieO3N6w1J93Tj1gT7BNb6UTnxQG3Nup4HOGp5jDOT3x8IA/exec";
 const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit";
 
 const STANDARDS = {
@@ -271,33 +271,36 @@ function NavItem({ icon, label, active, onClick, isLocked }) {
 // --- Dashboard Component ---
 function Dashboard({ logs, period, setPeriod, hasError }) {
   const stats = useMemo(() => {
-    const cutoffDate = new Date();
-    cutoffDate.setMonth(cutoffDate.getMonth() - period);
-    
-    // กรองข้อมูลตามระยะเวลาที่เลือก (3 หรือ 6 เดือน)
-    const periodLogs = logs.filter(l => { 
+    // 1. กรองข้อมูลเฉพาะ "รายเดือน" (เดือนปัจจุบัน) สำหรับ Dashboard Cards
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const monthlyLogs = logs.filter(l => { 
       const d = new Date(l.date); 
       if(isNaN(d.getTime())) return false;
-      return d >= cutoffDate; 
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear; 
     });
     
-    // 1. จำนวนโครงการที่ตรวจ (โครงการที่ไม่ซ้ำกัน)
-    const uniqueLocations = new Set(periodLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
+    // 2. จำนวนโครงการที่ตรวจ (ยึดตามการบันทึกผล ในฟิลด์ "โครงการ" ไม่ซ้ำกัน)
+    const uniqueLocations = new Set(monthlyLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
     
-    // 2. จำนวนบ่อบำบัดที่ตรวจ (นับรายการทั้งหมด)
-    const totalInspections = periodLogs.length;
+    // 3. จำนวนบ่อบำบัดที่ตรวจ (นับจากรายการทั้งหมดที่บันทึกในเดือนนี้)
+    const totalInspections = monthlyLogs.length;
 
-    // 3. จำนวนที่ไม่ผ่านเกณฑ์
-    const failedCount = periodLogs.filter(l => 
+    // 4. จำนวนที่ไม่ผ่านเกณฑ์ (ยึดตามโครงการ - ถ้าโครงการไหนมีบ่อใดบ่อหนึ่งตกเกณฑ์ ให้นับโครงการนั้นเป็น 1)
+    const failedLogs = monthlyLogs.filter(l => 
       parseFloat(l.ph) < STANDARDS.ph.min || 
       parseFloat(l.ph) > STANDARDS.ph.max || 
       parseFloat(l.tds) > STANDARDS.tds.max
-    ).length;
+    );
     
-    return { uniqueLocations, totalInspections, failedCount };
-  }, [logs, period]);
+    const uniqueFailedLocations = new Set(failedLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
+    
+    return { uniqueLocations, totalInspections, failedCount: uniqueFailedLocations };
+  }, [logs]);
 
-  // ประมวลผลกราฟ: จัดกลุ่มเป็น "ค่าเฉลี่ยรายเดือน" เพื่อให้ดูกราฟง่ายขึ้น
+  // ประมวลผลกราฟ: จัดกลุ่มเป็น "ค่าเฉลี่ยรายเดือน" และกรองตาม 3/6 เดือน
   const chartData = useMemo(() => {
     const cutoffDate = new Date();
     cutoffDate.setMonth(cutoffDate.getMonth() - period);
@@ -351,9 +354,9 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <StatCard title="โครงการที่ตรวจ" value={stats.uniqueLocations} description={`ในช่วง ${period} เดือนย้อนหลัง`} icon={<LayoutDashboard className="text-[#002D62]" />} color="border-[#002D62]" />
-        <StatCard title="บ่อบำบัดที่ตรวจ" value={stats.totalInspections} description={`จำนวนการบันทึกผลทั้งหมด`} icon={<ClipboardList className="text-blue-500" />} color="border-blue-500" />
-        <StatCard title="ไม่ผ่านเกณฑ์" value={stats.failedCount} total={stats.totalInspections} description={`จำนวนที่ไม่ผ่านมาตรฐาน`} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
+        <StatCard title="โครงการที่ตรวจ (เดือนนี้)" value={stats.uniqueLocations} description={`จำนวนโครงการทั้งหมด`} icon={<LayoutDashboard className="text-[#002D62]" />} color="border-[#002D62]" />
+        <StatCard title="บ่อบำบัดที่ตรวจ (เดือนนี้)" value={stats.totalInspections} description={`จำนวนครั้งที่บันทึกผล`} icon={<ClipboardList className="text-blue-500" />} color="border-blue-500" />
+        <StatCard title="โครงการที่ไม่ผ่าน (เดือนนี้)" value={stats.failedCount} total={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
         <StatCard 
           title="เซิร์ฟเวอร์ (Sheets)" 
           value={hasError ? "ออฟไลน์" : "ออนไลน์"} 
