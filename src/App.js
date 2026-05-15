@@ -1,7 +1,7 @@
 /* eslint-disable no-undef */
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine 
 } from 'recharts';
 import { 
   LayoutDashboard, ClipboardList, Settings as SettingsIcon, PlusCircle, AlertCircle, CheckCircle2, 
@@ -44,6 +44,7 @@ export default function App() {
     try {
       setIsLoading(true);
       setSheetError(null);
+      setSyncStatus('loading');
       
       const response = await fetch(`${GOOGLE_SHEETS_WEBHOOK_URL}?t=${Date.now()}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -112,7 +113,6 @@ export default function App() {
       status: isPassedNormal ? "ผ่านเกณฑ์" : "ไม่ผ่านเกณฑ์",
     };
 
-    // อัปเดตบนหน้าจอทันที
     setLogs(prev => {
       const newLogs = [...prev];
       const idx = newLogs.findIndex(l => l.date === originalLog.date && l.location === originalLog.location && l.poolNo === originalLog.poolNo && l.ph === originalLog.ph && l.tds === originalLog.tds);
@@ -125,7 +125,6 @@ export default function App() {
         method: 'POST', mode: 'no-cors',
         body: JSON.stringify({ action: 'edit', originalData: originalLog, data: updatedLogEntry })
       });
-      // แอบดึงข้อมูลใหม่หลังแก้ไขเสร็จ 2 วินาที เพื่อรีเฟรชชีต
       setTimeout(() => fetchLogsFromSheets(), 2000);
     } catch(e) { console.error(e); }
   };
@@ -152,7 +151,6 @@ export default function App() {
     } catch (err) { console.error(err); }
   };
 
-  // Batch Import CSV
   const handleImportData = async (importedLogs, onProgress) => {
     try {
       if (onProgress) onProgress(0, importedLogs.length);
@@ -440,7 +438,6 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
   const [isImporting, setIsImporting] = useState(false);
   const [importMessage, setImportMessage] = useState('');
   
-  // States สำหรับแก้ไขและลบ
   const [editingLog, setEditingLog] = useState(null);
   const [editFormData, setEditFormData] = useState({});
   const [deletingLog, setDeletingLog] = useState(null);
@@ -525,7 +522,6 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
         </div>
       )}
 
-      {/* Edit Modal */}
       {editingLog && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95">
@@ -573,7 +569,6 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
         </div>
       )}
 
-      {/* Delete Modal */}
       {deletingLog && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 text-center border-t-8 border-red-500">
@@ -661,7 +656,7 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
             </thead>
             <tbody className="divide-y divide-gray-50 print:divide-gray-200">
               {filteredLogs.length === 0 ? (
-                <tr><td colSpan="8" className="p-10 text-center text-gray-400 font-medium italic">ยังไม่มีข้อมูลในเดือนนี้</td></tr>
+                <tr><td colSpan="8" className="p-10 text-center text-gray-400 font-medium italic">ไม่มีข้อมูลการบันทึกในเดือนนี้</td></tr>
               ) : (
                 filteredLogs.map((l, i) => {
                   const isPassed = (parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max);
@@ -722,10 +717,10 @@ function SettingsView({ settings, onUpdateStaff }) {
       </div>
       <div className="bg-[#002D62] text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden">
         <div className="relative z-10">
-          <h3 className="text-lg font-bold mb-3 flex items-center gap-2 text-[#B8904F]"><AlertCircle size={20}/> ระบบแจ้งเตือนพิเศษ</h3>
+          <h3 className="text-lg font-bold mb-3 flex items-center gap-2 text-[#B8904F]"><AlertCircle size={20}/> ข้อมูลทางเทคนิค</h3>
           <p className="text-blue-100 text-xs md:text-sm opacity-90 leading-relaxed">
-            หากค่า pH {'<'} 5 หรือ {'>'} 9 หรือ TDS {'>'} 1,000 <br className="hidden md:block"/>
-            ระบบจะส่งแจ้งเตือนไปที่: <span className="font-bold underline text-white">kritsanapong@lh.co.th</span> ทันที
+            เกณฑ์มาตรฐาน: pH 5.5 - 9.0 และ TDS {'<'} 1,000 mg/L <br className="hidden md:block"/>
+            รหัสผ่านสำหรับเข้าถึงพื้นที่ส่วนบุคคลปัจจุบันคือ <span className="font-bold underline text-white">1312</span>
           </p>
         </div>
         <div className="absolute -bottom-10 -right-10 opacity-5"><SettingsIcon size={180} /></div>
