@@ -1,15 +1,15 @@
+/* eslint-disable no-undef */
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine 
 } from 'recharts';
 import { 
   LayoutDashboard, ClipboardList, Settings as SettingsIcon, PlusCircle, AlertCircle, CheckCircle2, 
-  XCircle, User, FileText, Download, Share2, Menu, X, Printer, Lock, Loader2, Database, Upload, Info, RefreshCw, AlertTriangle
+  XCircle, User, FileText, Download, Share2, Menu, X, Printer, Lock, Loader2, Database, Upload, Info, RefreshCw, AlertTriangle, Pencil, Trash2
 } from 'lucide-react';
 
 // ----------------------------------------------------------------------
 // 🔥 ตั้งค่า Google Sheets Webhook URL 
-// นำ URL ใหม่ที่เพิ่ง Deploy เป็น "Everyone (ทุกคน)" มาวางในเครื่องหมายคำพูดด้านล่างนี้!
 // ----------------------------------------------------------------------
 const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyBJbccynt4MhK62bW6x-aygqQRBdyWLDix9Ll_ab4L2rRC9dlpEUVzzajD-1Ad5kR_NA/exec";
 const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit";
@@ -30,8 +30,8 @@ export default function App() {
   const [chartPeriod, setChartPeriod] = useState(6);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [syncStatus, setSyncStatus] = useState('loading'); // loading, success, error
   const [sheetError, setSheetError] = useState(null);
+  const [syncStatus, setSyncStatus] = useState('loading');
   
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [showPasswordInput, setShowPasswordInput] = useState(false);
@@ -39,57 +39,35 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [passError, setPassError] = useState(false);
 
-  // ดึงข้อมูลทั้งหมดจาก Google Sheets (อัปเดตระบบป้องกัน Cache และ CORS)
+  // โหลดข้อมูลเริ่มต้นจาก Google Sheets
   const fetchLogsFromSheets = async () => {
     try {
       setIsLoading(true);
-      setSyncStatus('loading');
       setSheetError(null);
       
-      // เพิ่ม Parameter เวลาปัจจุบัน เพื่อบังคับให้โหลดข้อมูลใหม่เสมอ (ป้องกันเบราว์เซอร์จำ Cache เก่า)
-      const urlWithTimestamp = `${GOOGLE_SHEETS_WEBHOOK_URL}?t=${new Date().getTime()}`;
-      
-      const response = await fetch(urlWithTimestamp);
+      const response = await fetch(`${GOOGLE_SHEETS_WEBHOOK_URL}?t=${Date.now()}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       
       const text = await response.text();
       let result;
-      try {
-        result = JSON.parse(text);
-      } catch (e) {
-        throw new Error("ข้อมูลตอบกลับจาก Google Sheets ไม่ถูกต้อง (โปรดเช็คให้แน่ใจว่าตอน Deploy ได้ตั้งค่า Who has access เป็น 'Anyone')");
-      }
+      try { result = JSON.parse(text); } catch (e) { throw new Error("ข้อมูลตอบกลับจาก Google Sheets ไม่ถูกต้อง (CORS/Deploy Issue)"); }
       
       if (result && result.status === 'success') {
         if (result.data) {
           const sortedData = result.data.sort((a, b) => new Date(b.date) - new Date(a.date));
           setLogs(sortedData);
-          localStorage.setItem('waterQC_LogsCache', JSON.stringify(sortedData)); // สำรองกันเหนียว
         }
         if (result.settings && result.settings.staffNames) {
           setSettings({ staffNames: result.settings.staffNames });
-          localStorage.setItem('waterQC_StaffCache', JSON.stringify({ staffNames: result.settings.staffNames }));
         }
         setSyncStatus('success');
       } else {
         throw new Error(result.message || "รูปแบบข้อมูลจากตารางไม่ถูกต้อง");
       }
     } catch (error) {
-      console.warn("Fetch Error Details:", error.message);
+      console.warn("Fetch Error:", error.message);
       setSyncStatus('error');
-      
-      if (error.name === 'TypeError' || error.message.includes('Failed to fetch')) {
-        setSheetError("การเชื่อมต่อถูกบล็อก: URL เก่าหมดอายุ หรือยังไม่ได้ตั้งค่าสิทธิ์ให้ 'ทุกคน (Anyone)' เข้าถึง Web App ได้");
-      } else {
-        setSheetError(error.message);
-      }
-      
-      // ดึงข้อมูลสำรองมาแสดง ถ้าเชื่อมต่อ Cloud ไม่ได้
-      const cachedLogs = localStorage.getItem('waterQC_LogsCache');
-      const cachedStaff = localStorage.getItem('waterQC_StaffCache');
-      if (cachedLogs) setLogs(JSON.parse(cachedLogs));
-      if (cachedStaff) setSettings(JSON.parse(cachedStaff));
-      
+      setSheetError(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -99,7 +77,7 @@ export default function App() {
     fetchLogsFromSheets();
   }, []);
 
-  // บันทึกผลตรวจ
+  // ฟังก์ชันบันทึกข้อมูลเดี่ยว
   const handleAddLog = async (formData) => {
     const phVal = parseFloat(formData.ph);
     const tdsVal = parseFloat(formData.tds);
@@ -112,39 +90,80 @@ export default function App() {
       critical_alert: needsCriticalAlert,
     };
 
-    // อัปเดตหน้าจอทันที ไม่ต้องรอโหลด
-    const newLogs = [newLogEntry, ...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
-    setLogs(newLogs);
-    localStorage.setItem('waterQC_LogsCache', JSON.stringify(newLogs));
+    setLogs(prev => [newLogEntry, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
     setActiveTab('dashboard');
 
     try {
       await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-        method: 'POST',
-        mode: 'no-cors', 
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', mode: 'no-cors', 
         body: JSON.stringify({ action: 'add', data: newLogEntry })
       });
-    } catch (err) {
-      console.error("Save Error Details:", err);
-      alert("ไม่สามารถอัปโหลดข้อมูลขึ้น Cloud ได้ ข้อมูลถูกบันทึกไว้ในเครื่องนี้แล้ว");
-    }
+    } catch (err) { console.error("Save error:", err); }
   };
 
-  // อัปเดตรายชื่อ
-  const updateStaff = async (newStaffList) => {
-    setSettings({ staffNames: newStaffList }); 
-    localStorage.setItem('waterQC_StaffCache', JSON.stringify({ staffNames: newStaffList }));
+  // ฟังก์ชันแก้ไขข้อมูล
+  const handleEditLog = async (originalLog, newLogData) => {
+    const phVal = parseFloat(newLogData.ph);
+    const tdsVal = parseFloat(newLogData.tds);
+    const isPassedNormal = (phVal >= STANDARDS.ph.min && phVal <= STANDARDS.ph.max && tdsVal <= STANDARDS.tds.max);
+    
+    const updatedLogEntry = {
+      ...newLogData,
+      status: isPassedNormal ? "ผ่านเกณฑ์" : "ไม่ผ่านเกณฑ์",
+    };
+
+    // อัปเดตบนหน้าจอทันที
+    setLogs(prev => {
+      const newLogs = [...prev];
+      const idx = newLogs.findIndex(l => l.date === originalLog.date && l.location === originalLog.location && l.poolNo === originalLog.poolNo && l.ph === originalLog.ph && l.tds === originalLog.tds);
+      if(idx !== -1) newLogs[idx] = updatedLogEntry;
+      return newLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
+    });
+
     try {
       await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', mode: 'no-cors',
+        body: JSON.stringify({ action: 'edit', originalData: originalLog, data: updatedLogEntry })
+      });
+      // แอบดึงข้อมูลใหม่หลังแก้ไขเสร็จ 2 วินาที เพื่อรีเฟรชชีต
+      setTimeout(() => fetchLogsFromSheets(), 2000);
+    } catch(e) { console.error(e); }
+  };
+
+  // ฟังก์ชันลบข้อมูล
+  const handleDeleteLog = async (logToDelete) => {
+    setLogs(prev => prev.filter(l => !(l.date === logToDelete.date && l.location === logToDelete.location && l.poolNo === logToDelete.poolNo && l.ph === logToDelete.ph && l.tds === logToDelete.tds)));
+    try {
+      await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+        method: 'POST', mode: 'no-cors',
+        body: JSON.stringify({ action: 'delete', originalData: logToDelete })
+      });
+      setTimeout(() => fetchLogsFromSheets(), 2000);
+    } catch(e) { console.error(e); }
+  };
+
+  const updateStaff = async (newStaffList) => {
+    setSettings({ staffNames: newStaffList }); 
+    try {
+      await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+        method: 'POST', mode: 'no-cors',
         body: JSON.stringify({ action: 'update_settings', data: { staffNames: newStaffList } })
       });
-    } catch (err) {
-      console.error("Update Staff Error:", err);
-    }
+    } catch (err) { console.error(err); }
+  };
+
+  // Batch Import CSV
+  const handleImportData = async (importedLogs, onProgress) => {
+    try {
+      if (onProgress) onProgress(0, importedLogs.length);
+      await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+        method: 'POST', mode: 'no-cors',
+        body: JSON.stringify({ action: 'batch_add', data: importedLogs })
+      });
+      if (onProgress) onProgress(importedLogs.length, importedLogs.length);
+      setTimeout(() => fetchLogsFromSheets(), 2000); 
+      return true;
+    } catch (err) { return false; }
   };
 
   const handleTabChange = (tabId) => {
@@ -201,7 +220,7 @@ export default function App() {
         <div className="p-6 bg-blue-950/40 text-[10px] text-blue-400 border-t border-blue-900/50 italic flex flex-col gap-1">
           <div className="flex justify-between items-center mb-1">
             <span className="flex items-center gap-1">
-              <Database size={12}/> {syncStatus === 'success' ? 'ออนไลน์ (ข้อมูลแชร์กับทุกคน)' : syncStatus === 'error' ? 'ออฟไลน์ (เชื่อมต่อชีตไม่ได้)' : 'กำลังเชื่อมต่อ...'}
+              <Database size={12}/> {syncStatus === 'success' ? 'ซิงค์ข้อมูลกับ Cloud สำเร็จ' : syncStatus === 'error' ? 'เชื่อมต่อ Cloud ไม่ได้' : 'กำลังเชื่อมต่อ Cloud...'}
             </span>
             {isAuthorized && <button onClick={() => setIsAuthorized(false)} title="Admin Logout" className="hover:text-white transition-colors"><Lock size={12}/></button>}
           </div>
@@ -241,13 +260,12 @@ export default function App() {
             <div className="flex items-start gap-3">
               <AlertTriangle className="text-red-500 mt-0.5 shrink-0" size={24} />
               <div>
-                <h3 className="text-red-800 font-bold">การดึงข้อมูลจาก Cloud ล้มเหลว</h3>
+                <h3 className="text-red-800 font-bold">การเชื่อมต่อ Cloud ล้มเหลว</h3>
                 <p className="text-red-600 text-xs sm:text-sm mt-1 leading-relaxed max-w-3xl">{sheetError}</p>
-                <p className="text-red-500 text-xs mt-2 font-bold italic">*ขณะนี้ระบบกำลังแสดงผลด้วยข้อมูลสำรองล่าสุดในเครื่องนี้เท่านั้น</p>
               </div>
             </div>
             <button onClick={fetchLogsFromSheets} className="shrink-0 bg-red-100 text-red-700 hover:bg-red-200 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors w-full sm:w-auto justify-center">
-              <RefreshCw size={16} /> ซิงค์ใหม่
+              <RefreshCw size={16} /> ลองใหม่
             </button>
           </div>
         )}
@@ -255,7 +273,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto">
           {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} hasError={syncStatus === 'error'} />}
           {activeTab === 'form' && <EntryForm onSubmit={handleAddLog} staffNames={settings.staffNames} />}
-          {activeTab === 'report' && <ReportView logs={logs} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} />}
+          {activeTab === 'report' && <ReportView logs={logs} staffNames={settings.staffNames} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} onImport={handleImportData} onEdit={handleEditLog} onDelete={handleDeleteLog} />}
           {activeTab === 'settings' && <SettingsView settings={settings} onUpdateStaff={updateStaff} />}
         </div>
       </main>
@@ -279,73 +297,52 @@ function NavItem({ icon, label, active, onClick, isLocked }) {
 
 // --- Dashboard Component ---
 function Dashboard({ logs, period, setPeriod, hasError }) {
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
-
   const stats = useMemo(() => {
-    // 1. กรองข้อมูลเฉพาะ "รายเดือน" (ตามเดือนที่เลือก) สำหรับ Dashboard Cards
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
     const monthlyLogs = logs.filter(l => { 
       const d = new Date(l.date); 
       if(isNaN(d.getTime())) return false;
-      return d.getMonth() === parseInt(selectedMonth) && d.getFullYear() === parseInt(selectedYear); 
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear; 
     });
     
-    // 2. จำนวนโครงการที่ตรวจ (ยึดตามการบันทึกผล ในฟิลด์ "โครงการ" ไม่ซ้ำกัน)
     const uniqueLocations = new Set(monthlyLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
-    
-    // 3. จำนวนบ่อบำบัดที่ตรวจ (นับจากรายการทั้งหมดที่บันทึกในเดือนที่เลือก)
     const totalInspections = monthlyLogs.length;
 
-    // 4. จำนวนที่ไม่ผ่านเกณฑ์ (ยึดตามโครงการ - ถ้าโครงการไหนมีบ่อใดบ่อหนึ่งตกเกณฑ์ ให้นับโครงการนั้นเป็น 1)
     const failedLogs = monthlyLogs.filter(l => 
-      parseFloat(l.ph) < STANDARDS.ph.min || 
-      parseFloat(l.ph) > STANDARDS.ph.max || 
-      parseFloat(l.tds) > STANDARDS.tds.max
+      parseFloat(l.ph) < STANDARDS.ph.min || parseFloat(l.ph) > STANDARDS.ph.max || parseFloat(l.tds) > STANDARDS.tds.max
     );
-    
     const uniqueFailedLocations = new Set(failedLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
     
     return { uniqueLocations, totalInspections, failedCount: uniqueFailedLocations };
-  }, [logs, selectedMonth, selectedYear]);
+  }, [logs]);
 
-  // ประมวลผลกราฟ: จัดกลุ่มเป็น "ค่าเฉลี่ยรายเดือน" และกรองตาม 3/6 เดือน ย้อนหลังจากเดือนที่เลือก
   const chartData = useMemo(() => {
-    // หาวันที่สิ้นสุด (วันสุดท้ายของเดือนที่เลือก)
-    const endDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59);
-    // หาวันที่เริ่มต้น (ย้อนหลัง period เดือน โดยนับเดือนที่เลือกเป็นเดือนที่ 1)
-    const startDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - period + 1, 1);
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - period);
     
     const periodLogs = logs.filter(l => { 
       const d = new Date(l.date); 
       if(isNaN(d.getTime())) return false;
-      return d >= startDate && d <= endDate; 
+      return d >= cutoffDate; 
     });
 
-    // ใช้ Object เพื่อจัดกลุ่มข้อมูลตามเดือน-ปี
     const groupedData = {};
-    
     periodLogs.forEach(l => {
       const d = new Date(l.date);
       const monthYear = d.toLocaleDateString('th-TH', { month: 'short', year: '2-digit' });
-      const sortKey = `${d.getFullYear()}${String(d.getMonth()).padStart(2, '0')}`; // สำหรับเรียงลำดับให้ถูกเดือน
+      const sortKey = `${d.getFullYear()}${String(d.getMonth()).padStart(2, '0')}`;
       
       if (!groupedData[monthYear]) {
-        groupedData[monthYear] = {
-          name: monthYear,
-          sortKey: sortKey,
-          phSum: 0,
-          tdsSum: 0,
-          count: 0
-        };
+        groupedData[monthYear] = { name: monthYear, sortKey: sortKey, phSum: 0, tdsSum: 0, count: 0 };
       }
-      
       groupedData[monthYear].phSum += parseFloat(l.ph) || 0;
       groupedData[monthYear].tdsSum += parseFloat(l.tds) || 0;
       groupedData[monthYear].count += 1;
     });
 
-    // นำข้อมูลที่จัดกลุ่มแล้วมาคำนวณค่าเฉลี่ย และเรียงตามลำดับเวลา
     return Object.values(groupedData)
       .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
       .map(item => ({
@@ -354,43 +351,31 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
         tds: Number((item.tdsSum / item.count).toFixed(0))
       }));
       
-  }, [logs, period, selectedMonth, selectedYear]);
+  }, [logs, period]);
 
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl md:text-3xl font-bold text-[#002D62]">ภาพรวมคุณภาพน้ำ</h2>
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {/* ตัวกรอง เดือน/ปี */}
-          <div className="flex gap-2 w-full sm:w-auto">
-            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 sm:flex-none p-2 rounded-lg border-gray-200 bg-white border text-sm font-semibold outline-none focus:border-[#002D62] shadow-sm">
-              {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
-            </select>
-            <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="flex-1 sm:flex-none p-2 rounded-lg border-gray-200 bg-white border text-sm font-semibold outline-none focus:border-[#002D62] shadow-sm">
-              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-          {/* ปุ่มเลือก 3/6 เดือน สำหรับกราฟ */}
-          <div className="flex bg-white rounded-lg shadow-sm border p-1 w-full sm:w-auto">
-            {[3, 6].map(m => (<button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-bold ${period === m ? 'bg-[#002D62] text-white' : 'text-gray-500'}`}>กราฟ {m} เดือน</button>))}
-          </div>
+        <div className="flex bg-white rounded-lg shadow-sm border p-1 w-full sm:w-auto">
+          {[3, 6].map(m => (<button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-6 py-2 rounded-md text-sm font-bold ${period === m ? 'bg-[#002D62] text-white' : 'text-gray-500'}`}>{m} เดือน</button>))}
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <StatCard title={`โครงการที่ตรวจ (${months[selectedMonth]})`} value={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<LayoutDashboard className="text-[#002D62]" />} color="border-[#002D62]" />
-        <StatCard title={`บ่อบำบัดที่ตรวจ (${months[selectedMonth]})`} value={stats.totalInspections} description={`จำนวนครั้งที่บันทึกผล`} icon={<ClipboardList className="text-blue-500" />} color="border-blue-500" />
-        <StatCard title={`โครงการที่ไม่ผ่าน (${months[selectedMonth]})`} value={stats.failedCount} total={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
+        <StatCard title="โครงการที่ตรวจ (เดือนนี้)" value={stats.uniqueLocations} description={`จำนวนโครงการทั้งหมด`} icon={<LayoutDashboard className="text-[#002D62]" />} color="border-[#002D62]" />
+        <StatCard title="บ่อบำบัดที่ตรวจ (เดือนนี้)" value={stats.totalInspections} description={`จำนวนครั้งที่บันทึกผล`} icon={<ClipboardList className="text-blue-500" />} color="border-blue-500" />
+        <StatCard title="โครงการที่ไม่ผ่าน (เดือนนี้)" value={stats.failedCount} total={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
         <StatCard 
           title="เซิร์ฟเวอร์ (Sheets)" 
           value={hasError ? "ออฟไลน์" : "ออนไลน์"} 
-          description={hasError ? "ใช้ข้อมูลในเครื่อง" : "ข้อมูลซิงค์เรียลไทม์"} 
+          description={hasError ? "มีปัญหาการเชื่อมต่อ" : "ข้อมูลแชร์ร่วมกันทุกคน"} 
           icon={hasError ? <XCircle className="text-red-500" /> : <Database className="text-[#16A34A]" />} 
           color={hasError ? "border-red-500" : "border-[#16A34A]"} 
         />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
-        <ChartBox title={`แนวโน้มค่าเฉลี่ย pH (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
-        <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
+        <ChartBox title={`แนวโน้มค่าเฉลี่ย pH รายเดือน (${period} เดือน)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
+        <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS รายเดือน (${period} เดือน)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
       </div>
     </div>
   );
@@ -438,11 +423,18 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
   );
 }
 
-// --- Report View Component ---
-function ReportView({ logs, sheetUrl }) {
+// --- Report View Component with Edit/Delete ---
+function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [isImporting, setIsImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState('');
   
+  // States สำหรับแก้ไขและลบ
+  const [editingLog, setEditingLog] = useState(null);
+  const [editFormData, setEditFormData] = useState({});
+  const [deletingLog, setDeletingLog] = useState(null);
+
   const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
   const filteredLogs = useMemo(() => {
@@ -453,12 +445,131 @@ function ReportView({ logs, sheetUrl }) {
     });
   }, [logs, selectedMonth, selectedYear]);
 
+  const handleCSVImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsImporting(true);
+    setImportMessage('');
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        const lines = text.split(/\r?\n/);
+        const results = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          const cols = line.split(',');
+          if (cols.length >= 5) {
+            results.push({
+              date: (cols[0] || '').replace(/['"]/g, '').trim(),
+              location: (cols[1] || '').replace(/['"]/g, '').trim(),
+              poolNo: (cols[2] || '').replace(/['"]/g, '').trim() || '1',
+              ph: (cols[3] || '').replace(/['"]/g, '').trim(),
+              tds: (cols[4] || '').replace(/['"]/g, '').trim(),
+              color: (cols[5] || 'ใส').replace(/['"]/g, '').trim(),
+              odor: (cols[6] || 'ไม่มีกลิ่น').replace(/['"]/g, '').trim(),
+              recorder: (cols[7] || '').replace(/['"]/g, '').trim(),
+            });
+          }
+        }
+        if (results.length === 0) {
+          setImportMessage("ไม่พบข้อมูลที่ถูกต้องในไฟล์");
+          setIsImporting(false);
+          return;
+        }
+        const success = await onImport(results, null);
+        if (success) setImportMessage(`นำเข้าข้อมูลสำเร็จ ${results.length} รายการ!`);
+      } catch (err) {
+        setImportMessage("เกิดข้อผิดพลาดในการนำเข้า");
+      } finally {
+        setIsImporting(false);
+        e.target.value = null; 
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleEditSubmit = (e) => {
+    e.preventDefault();
+    onEdit(editingLog, editFormData);
+    setEditingLog(null);
+  };
+
+  const handleDeleteConfirm = () => {
+    onDelete(deletingLog);
+    setDeletingLog(null);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500 relative">
+      {importMessage && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 text-center">
+            <div className="w-16 h-16 bg-blue-50 text-[#002D62] rounded-full flex items-center justify-center mb-6 mx-auto"><Info size={32} /></div>
+            <h3 className="text-xl font-bold text-gray-800 mb-4">แจ้งเตือนระบบ</h3>
+            <p className="text-gray-600 mb-8 leading-relaxed">{importMessage}</p>
+            <button onClick={() => setImportMessage('')} className="w-full py-3 bg-[#002D62] hover:bg-[#003d82] text-white rounded-xl font-bold shadow-lg transition-all">ตกลง</button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingLog && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="bg-[#002D62] p-6 text-white flex justify-between items-center">
+              <h3 className="text-xl font-bold flex items-center gap-2"><Pencil size={20} className="text-[#B8904F]"/> แก้ไขข้อมูลการตรวจ</h3>
+              <button onClick={() => setEditingLog(null)} className="hover:text-blue-200"><X size={24}/></button>
+            </div>
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">วันที่</label><input type="date" value={editFormData.date} onChange={e => setEditFormData({...editFormData, date: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 outline-none focus:border-blue-500" required /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">โครงการ</label><input type="text" value={editFormData.location} onChange={e => setEditFormData({...editFormData, location: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 outline-none focus:border-blue-500" required /></div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">บ่อที่</label>
+                  <select value={editFormData.poolNo} onChange={e => setEditFormData({...editFormData, poolNo: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 outline-none focus:border-blue-500">
+                    {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">ผู้บันทึก</label>
+                  <select value={editFormData.recorder} onChange={e => setEditFormData({...editFormData, recorder: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 outline-none focus:border-blue-500">
+                    {staffNames.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">pH</label><input type="number" step="0.1" value={editFormData.ph} onChange={e => setEditFormData({...editFormData, ph: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 outline-none focus:border-blue-500 font-bold" required /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">TDS</label><input type="number" value={editFormData.tds} onChange={e => setEditFormData({...editFormData, tds: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 outline-none focus:border-blue-500 font-bold" required /></div>
+              </div>
+              <div className="flex gap-4 pt-4 border-t">
+                <button type="button" onClick={() => setEditingLog(null)} className="flex-1 py-3 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-3 rounded-xl font-bold text-white bg-[#002D62] hover:bg-[#003d82] shadow-lg transition-colors">บันทึกการแก้ไข</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {deletingLog && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 text-center border-t-8 border-red-500">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 mx-auto"><Trash2 size={32} /></div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">ยืนยันการลบข้อมูล</h3>
+            <p className="text-gray-600 mb-8 leading-relaxed">คุณต้องการลบข้อมูลของ <strong>{deletingLog.location} (บ่อที่ {deletingLog.poolNo})</strong> วันที่ {deletingLog.date} ใช่หรือไม่? <br/>ข้อมูลจะถูกลบออกจากระบบอย่างถาวร</p>
+            <div className="flex gap-4">
+              <button onClick={() => setDeletingLog(null)} className="flex-1 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors">ยกเลิก</button>
+              <button onClick={handleDeleteConfirm} className="flex-1 py-3.5 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg transition-colors">ยืนยันลบ</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 print:hidden">
         <div>
           <h2 className="text-2xl font-bold text-[#002D62]">รายงานสรุปคุณภาพน้ำ</h2>
-          <p className="text-sm text-gray-500">ข้อมูลจะบันทึกลงตาราง Google Sheets ทุกครั้งที่มีการกรอกผล</p>
+          <p className="text-sm text-gray-500">กรองข้อมูล อัปโหลด หรือจัดการรายการตรวจ</p>
         </div>
         <div className="flex gap-3 w-full md:w-auto">
           <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 p-2.5 rounded-xl border-gray-200 bg-slate-50 border text-sm font-semibold outline-none focus:border-[#002D62]">
@@ -491,13 +602,23 @@ function ReportView({ logs, sheetUrl }) {
           <Download size={20} /> ส่งออก (CSV)
         </button>
         
-        <button onClick={() => window.open(sheetUrl, '_blank')} className="flex items-center justify-center gap-3 bg-white border-2 border-dashed border-gray-300 text-gray-600 p-4 rounded-2xl font-bold hover:bg-gray-50 transition-all shadow-sm">
-          <Database size={20} className="text-[#002D62]" /> 
-          <span>จัดการข้อมูลในชีต</span>
-        </button>
+        <label className="flex items-center justify-center gap-3 bg-white border-2 border-dashed border-gray-300 text-gray-600 p-4 rounded-2xl font-bold hover:bg-gray-50 cursor-pointer transition-all shadow-sm relative overflow-hidden">
+          {isImporting ? (
+            <>
+              <Loader2 size={20} className="animate-spin text-[#002D62] relative z-10" /> 
+              <span className="relative z-10 text-[#002D62]">กำลังส่งข้อมูลเข้าชีต...</span>
+            </>
+          ) : (
+            <>
+              <Upload size={20} className="text-[#B8904F]" />
+              <span>อัปโหลดเข้าตาราง</span>
+              <input type="file" accept=".csv" onChange={handleCSVImport} className="hidden" disabled={isImporting} />
+            </>
+          )}
+        </label>
 
         <button onClick={() => window.open(sheetUrl, '_blank')} className="flex items-center justify-center gap-3 bg-[#16A34A] text-white p-4 rounded-2xl font-bold shadow-lg hover:bg-[#15803d] transition-all">
-          <Share2 size={20} /> เปิดตารางตัวเต็ม
+          <Share2 size={20} /> เปิด Google Sheets
         </button>
       </div>
 
@@ -511,16 +632,17 @@ function ReportView({ logs, sheetUrl }) {
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">pH</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">TDS</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">สถานะ</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:hidden">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 print:divide-gray-200">
               {filteredLogs.length === 0 ? (
-                <tr><td colSpan="5" className="p-10 text-center text-gray-400 font-medium italic">ยังไม่มีข้อมูลในเดือนนี้</td></tr>
+                <tr><td colSpan="6" className="p-10 text-center text-gray-400 font-medium italic">ยังไม่มีข้อมูลในเดือนนี้</td></tr>
               ) : (
                 filteredLogs.map((l, i) => {
                   const isPassed = (parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max);
                   return (
-                    <tr key={i} className="hover:bg-blue-50/30 transition-colors print:hover:bg-transparent">
+                    <tr key={i} className="hover:bg-blue-50/30 transition-colors print:hover:bg-transparent group">
                       <td className="p-4 text-sm font-semibold text-gray-700 print:text-black whitespace-nowrap">{l.date}</td>
                       <td className="p-4 text-sm text-gray-600 print:text-black">
                         <span className="font-bold">{l.location}</span> 
@@ -532,6 +654,16 @@ function ReportView({ logs, sheetUrl }) {
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${isPassed ? 'bg-green-100 text-green-700 print:bg-transparent print:text-green-600' : 'bg-red-100 text-red-700 print:bg-transparent print:text-red-600'}`}>
                           {isPassed ? 'ผ่าน' : 'ตกเกณฑ์'}
                         </span>
+                      </td>
+                      <td className="p-4 text-center print:hidden">
+                        <div className="flex items-center justify-center gap-2 opacity-30 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => { setEditFormData(l); setEditingLog(l); }} className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-colors" title="แก้ไข">
+                            <Pencil size={16} />
+                          </button>
+                          <button onClick={() => setDeletingLog(l)} className="p-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg transition-colors" title="ลบข้อมูล">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
