@@ -297,15 +297,15 @@ function NavItem({ icon, label, active, onClick, isLocked }) {
 
 // --- Dashboard Component ---
 function Dashboard({ logs, period, setPeriod, hasError }) {
-  const stats = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
+  const stats = useMemo(() => {
     const monthlyLogs = logs.filter(l => { 
       const d = new Date(l.date); 
       if(isNaN(d.getTime())) return false;
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear; 
+      return d.getMonth() === parseInt(selectedMonth) && d.getFullYear() === parseInt(selectedYear); 
     });
     
     const uniqueLocations = new Set(monthlyLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
@@ -317,16 +317,16 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
     const uniqueFailedLocations = new Set(failedLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
     
     return { uniqueLocations, totalInspections, failedCount: uniqueFailedLocations };
-  }, [logs]);
+  }, [logs, selectedMonth, selectedYear]);
 
   const chartData = useMemo(() => {
-    const cutoffDate = new Date();
-    cutoffDate.setMonth(cutoffDate.getMonth() - period);
+    const endDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59);
+    const startDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - period + 1, 1);
     
     const periodLogs = logs.filter(l => { 
       const d = new Date(l.date); 
       if(isNaN(d.getTime())) return false;
-      return d >= cutoffDate; 
+      return d >= startDate && d <= endDate; 
     });
 
     const groupedData = {};
@@ -351,31 +351,41 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
         tds: Number((item.tdsSum / item.count).toFixed(0))
       }));
       
-  }, [logs, period]);
+  }, [logs, period, selectedMonth, selectedYear]);
 
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h2 className="text-2xl md:text-3xl font-bold text-[#002D62]">ภาพรวมคุณภาพน้ำ</h2>
-        <div className="flex bg-white rounded-lg shadow-sm border p-1 w-full sm:w-auto">
-          {[3, 6].map(m => (<button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-6 py-2 rounded-md text-sm font-bold ${period === m ? 'bg-[#002D62] text-white' : 'text-gray-500'}`}>{m} เดือน</button>))}
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <div className="flex gap-2 w-full sm:w-auto">
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 sm:flex-none p-2 rounded-lg border-gray-200 bg-white border text-sm font-semibold outline-none focus:border-[#002D62] shadow-sm">
+              {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
+            <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="flex-1 sm:flex-none p-2 rounded-lg border-gray-200 bg-white border text-sm font-semibold outline-none focus:border-[#002D62] shadow-sm">
+              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div className="flex bg-white rounded-lg shadow-sm border p-1 w-full sm:w-auto">
+            {[3, 6].map(m => (<button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-bold ${period === m ? 'bg-[#002D62] text-white' : 'text-gray-500'}`}>กราฟ {m} เดือน</button>))}
+          </div>
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <StatCard title="โครงการที่ตรวจ (เดือนนี้)" value={stats.uniqueLocations} description={`จำนวนโครงการทั้งหมด`} icon={<LayoutDashboard className="text-[#002D62]" />} color="border-[#002D62]" />
-        <StatCard title="บ่อบำบัดที่ตรวจ (เดือนนี้)" value={stats.totalInspections} description={`จำนวนครั้งที่บันทึกผล`} icon={<ClipboardList className="text-blue-500" />} color="border-blue-500" />
-        <StatCard title="โครงการที่ไม่ผ่าน (เดือนนี้)" value={stats.failedCount} total={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
+        <StatCard title={`โครงการที่ตรวจ (${months[selectedMonth]})`} value={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<LayoutDashboard className="text-[#002D62]" />} color="border-[#002D62]" />
+        <StatCard title={`บ่อบำบัดที่ตรวจ (${months[selectedMonth]})`} value={stats.totalInspections} description={`จำนวนครั้งที่บันทึกผล`} icon={<ClipboardList className="text-blue-500" />} color="border-blue-500" />
+        <StatCard title={`โครงการที่ไม่ผ่าน (${months[selectedMonth]})`} value={stats.failedCount} total={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
         <StatCard 
           title="เซิร์ฟเวอร์ (Sheets)" 
           value={hasError ? "ออฟไลน์" : "ออนไลน์"} 
-          description={hasError ? "มีปัญหาการเชื่อมต่อ" : "ข้อมูลแชร์ร่วมกันทุกคน"} 
+          description={hasError ? "ใช้ข้อมูลในเครื่อง" : "ข้อมูลซิงค์เรียลไทม์"} 
           icon={hasError ? <XCircle className="text-red-500" /> : <Database className="text-[#16A34A]" />} 
           color={hasError ? "border-red-500" : "border-[#16A34A]"} 
         />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
-        <ChartBox title={`แนวโน้มค่าเฉลี่ย pH รายเดือน (${period} เดือน)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
-        <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS รายเดือน (${period} เดือน)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
+        <ChartBox title={`แนวโน้มค่าเฉลี่ย pH (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
+        <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
       </div>
     </div>
   );
@@ -521,7 +531,7 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95">
             <div className="bg-[#002D62] p-6 text-white flex justify-between items-center">
               <h3 className="text-xl font-bold flex items-center gap-2"><Pencil size={20} className="text-[#B8904F]"/> แก้ไขข้อมูลการตรวจ</h3>
-              <button onClick={() => setEditingLog(null)} className="hover:text-blue-200"><X size={24}/></button>
+              <button type="button" onClick={() => setEditingLog(null)} className="hover:text-blue-200"><X size={24}/></button>
             </div>
             <form onSubmit={handleEditSubmit} className="p-6 space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -541,6 +551,18 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
                 </div>
                 <div><label className="block text-xs font-bold text-gray-500 mb-1">pH</label><input type="number" step="0.1" value={editFormData.ph} onChange={e => setEditFormData({...editFormData, ph: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 outline-none focus:border-blue-500 font-bold" required /></div>
                 <div><label className="block text-xs font-bold text-gray-500 mb-1">TDS</label><input type="number" value={editFormData.tds} onChange={e => setEditFormData({...editFormData, tds: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 outline-none focus:border-blue-500 font-bold" required /></div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">ลักษณะสี</label>
+                  <select value={editFormData.color || 'ใส'} onChange={e => setEditFormData({...editFormData, color: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 outline-none focus:border-blue-500">
+                    {['ใส', 'ขุ่นเล็กน้อย', 'ขุ่น'].map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">กลิ่น</label>
+                  <select value={editFormData.odor || 'ไม่มีกลิ่น'} onChange={e => setEditFormData({...editFormData, odor: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 outline-none focus:border-blue-500">
+                    {['ไม่มีกลิ่น', 'มีกลิ่นเล็กน้อย', 'มีกลิ่น'].map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="flex gap-4 pt-4 border-t">
                 <button type="button" onClick={() => setEditingLog(null)} className="flex-1 py-3 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">ยกเลิก</button>
@@ -559,8 +581,8 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
             <h3 className="text-xl font-bold text-gray-800 mb-2">ยืนยันการลบข้อมูล</h3>
             <p className="text-gray-600 mb-8 leading-relaxed">คุณต้องการลบข้อมูลของ <strong>{deletingLog.location} (บ่อที่ {deletingLog.poolNo})</strong> วันที่ {deletingLog.date} ใช่หรือไม่? <br/>ข้อมูลจะถูกลบออกจากระบบอย่างถาวร</p>
             <div className="flex gap-4">
-              <button onClick={() => setDeletingLog(null)} className="flex-1 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors">ยกเลิก</button>
-              <button onClick={handleDeleteConfirm} className="flex-1 py-3.5 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg transition-colors">ยืนยันลบ</button>
+              <button type="button" onClick={() => setDeletingLog(null)} className="flex-1 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors">ยกเลิก</button>
+              <button type="button" onClick={handleDeleteConfirm} className="flex-1 py-3.5 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg transition-colors">ยืนยันลบ</button>
             </div>
           </div>
         </div>
@@ -631,13 +653,15 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-black">โครงการ / บ่อจุดที่</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">pH</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">TDS</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">สี</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">กลิ่น</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-black">สถานะ</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:hidden">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 print:divide-gray-200">
               {filteredLogs.length === 0 ? (
-                <tr><td colSpan="6" className="p-10 text-center text-gray-400 font-medium italic">ยังไม่มีข้อมูลในเดือนนี้</td></tr>
+                <tr><td colSpan="8" className="p-10 text-center text-gray-400 font-medium italic">ยังไม่มีข้อมูลในเดือนนี้</td></tr>
               ) : (
                 filteredLogs.map((l, i) => {
                   const isPassed = (parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max);
@@ -650,6 +674,8 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
                       </td>
                       <td className="p-4 text-sm text-center font-mono print:text-black">{l.ph}</td>
                       <td className="p-4 text-sm text-center font-mono print:text-black">{l.tds}</td>
+                      <td className="p-4 text-sm text-center print:text-black">{l.color || '-'}</td>
+                      <td className="p-4 text-sm text-center print:text-black">{l.odor || '-'}</td>
                       <td className="p-4 text-center">
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${isPassed ? 'bg-green-100 text-green-700 print:bg-transparent print:text-green-600' : 'bg-red-100 text-red-700 print:bg-transparent print:text-red-600'}`}>
                           {isPassed ? 'ผ่าน' : 'ตกเกณฑ์'}
@@ -673,125 +699,6 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
           </table>
         </div>
       </div>
-    </div>
-  );
-}
-
-// --- Entry Form Component ---
-function EntryForm({ onSubmit, staffNames }) {
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    location: '',
-    poolNo: '1',
-    ph: '',
-    tds: '',
-    color: 'ใส',
-    odor: 'ไม่มีกลิ่น',
-    recorder: staffNames[0] || ''
-  });
-  const [alerts, setAlerts] = useState({});
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-
-  useEffect(() => {
-    if (staffNames.length > 0 && (!formData.recorder || !staffNames.includes(formData.recorder))) {
-      setFormData(p => ({ ...p, recorder: staffNames[0] }));
-    }
-  }, [staffNames, formData.recorder]);
-
-  const validate = (name, val) => {
-    let msg = "";
-    const num = parseFloat(val);
-    if (name === 'ph' && (num < STANDARDS.ph.min || num > STANDARDS.ph.max)) msg = `ไม่อยู่ในเกณฑ์ (5.5 - 9.0)`;
-    if (name === 'tds' && num > STANDARDS.tds.max) msg = `เกินเกณฑ์ (1,000 mg/L)`;
-    setAlerts(prev => ({ ...prev, [name]: msg }));
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(p => ({ ...p, [name]: value }));
-    if (['ph', 'tds'].includes(name)) validate(name, value);
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (alerts.ph || alerts.tds) { setShowConfirmModal(true); return; }
-    onSubmit(formData);
-  };
-
-  const phVal = parseFloat(formData.ph);
-  const tdsVal = parseFloat(formData.tds);
-  const isCritical = (phVal < STANDARDS.alert_ph_min || phVal > STANDARDS.alert_ph_max || tdsVal > STANDARDS.alert_tds);
-
-  return (
-    <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-4 duration-500">
-      <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
-        <div className="bg-[#002D62] p-8 md:p-10 text-white flex justify-between items-center">
-          <div>
-            <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3"><PlusCircle size={28} className="text-[#B8904F]" /> บันทึกผลการตรวจคุณภาพน้ำ</h2>
-            <p className="text-blue-200 mt-1 opacity-80 text-xs md:text-sm">ข้อมูลบันทึกและแชร์ให้ทุกคนเห็นอัตโนมัติผ่าน Google Sheets</p>
-          </div>
-          <ClipboardList size={48} className="opacity-20 hidden sm:block" />
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 md:p-10 space-y-8 md:space-y-10">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <FormField label="วันที่ตรวจสอบ">
-              <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-medium" required />
-            </FormField>
-            
-            <FormField label="โครงการ">
-              <input type="text" name="location" value={formData.location} onChange={handleChange} placeholder="ระบุชื่อโครงการ" className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-medium" required />
-            </FormField>
-            
-            <FormField label="บ่อบำบัดจุดที่">
-              <select name="poolNo" value={formData.poolNo} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-bold text-center">
-                {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </FormField>
-            
-            <FormField label="เจ้าหน้าที่ผู้ตรวจ">
-              <select name="recorder" value={formData.recorder} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-bold">
-                {staffNames.length > 0 ? staffNames.map(s => <option key={s} value={s}>{s}</option>) : <option value="">กำลังโหลด...</option>}
-              </select>
-            </FormField>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 bg-blue-50/40 p-6 md:p-8 rounded-3xl border border-blue-100 shadow-inner">
-            <FormField label={`ค่า pH (เกณฑ์ 5.5 - 9.0)`} alert={alerts.ph}>
-              <input type="number" step="0.1" name="ph" value={formData.ph} onChange={handleChange} className={`w-full p-4 rounded-2xl border transition-all text-xl font-black shadow-sm ${alerts.ph ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white focus:ring-2 focus:ring-[#002D62]'}`} required />
-            </FormField>
-            <FormField label={`ค่า TDS (เกณฑ์ไม่เกิน 1,000 mg/L)`} alert={alerts.tds}>
-              <input type="number" name="tds" value={formData.tds} onChange={handleChange} className={`w-full p-4 rounded-2xl border transition-all text-xl font-black shadow-sm ${alerts.tds ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white focus:ring-2 focus:ring-[#002D62]'}`} required />
-            </FormField>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 md:gap-8">
-            <RadioBox label="ลักษณะสี" name="color" options={['ใส', 'ขุ่นเล็กน้อย', 'ขุ่น']} value={formData.color} onChange={handleChange} />
-            <RadioBox label="กลิ่น" name="odor" options={['ไม่มีกลิ่น', 'มีกลิ่นเล็กน้อย', 'มีกลิ่น']} value={formData.odor} onChange={handleChange} />
-          </div>
-
-          <button type="submit" className="w-full bg-[#002D62] hover:bg-[#003d82] text-white py-5 rounded-2xl font-black text-lg md:text-xl shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3">
-            <CheckCircle2 size={24} /> ยืนยันบันทึกผลไปยังระบบ Cloud
-          </button>
-        </form>
-      </div>
-
-      {showConfirmModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 border-t-8 border-red-500">
-            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 mx-auto shadow-inner"><AlertCircle size={32} /></div>
-            <h3 className="text-xl font-bold text-center text-gray-800 mb-2">ตรวจพบค่าที่ตกเกณฑ์</h3>
-            <p className="text-center text-gray-600 mb-8 leading-relaxed">
-              ค่าคุณภาพน้ำที่ระบุ <strong className="text-red-500">อยู่นอกเกณฑ์มาตรฐาน</strong>
-              <br/>
-              {isCritical && <span className="text-xs text-[#B8904F] mt-2 block bg-amber-50 p-2 rounded-lg font-bold">⚠️ จะมีการส่งอีเมลแจ้งเตือนวิกฤตไปที่ {STANDARDS.alert_email}</span>}
-            </p>
-            <div className="flex gap-4">
-              <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 border">ยกเลิก</button>
-              <button onClick={() => { setShowConfirmModal(false); onSubmit(formData); }} className="flex-1 py-3.5 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg transition-all">ยืนยันบันทึก</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
