@@ -1,7 +1,7 @@
 /* eslint-disable no-undef */
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine 
 } from 'recharts';
 import { 
   LayoutDashboard, ClipboardList, Settings as SettingsIcon, PlusCircle, AlertCircle, CheckCircle2, 
@@ -10,6 +10,7 @@ import {
 
 // ----------------------------------------------------------------------
 // 🔥 ตั้งค่า Google Sheets Webhook URL 
+// (นำ URL ที่ได้จาก Apps Script มาใส่ตรงนี้)
 // ----------------------------------------------------------------------
 const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyBJbccynt4MhK62bW6x-aygqQRBdyWLDix9Ll_ab4L2rRC9dlpEUVzzajD-1Ad5kR_NA/exec";
 const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit";
@@ -30,8 +31,8 @@ export default function App() {
   const [chartPeriod, setChartPeriod] = useState(6);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState('loading'); 
   const [sheetError, setSheetError] = useState(null);
-  const [syncStatus, setSyncStatus] = useState('loading');
   
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [showPasswordInput, setShowPasswordInput] = useState(false);
@@ -39,27 +40,35 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [passError, setPassError] = useState(false);
 
-  // โหลดข้อมูลเริ่มต้นจาก Google Sheets
+  // 1. โหลดข้อมูลจาก Google Sheets
   const fetchLogsFromSheets = async () => {
     try {
       setIsLoading(true);
-      setSheetError(null);
       setSyncStatus('loading');
+      setSheetError(null);
       
-      const response = await fetch(`${GOOGLE_SHEETS_WEBHOOK_URL}?t=${Date.now()}`);
+      const urlWithTimestamp = `${GOOGLE_SHEETS_WEBHOOK_URL}?t=${new Date().getTime()}`;
+      const response = await fetch(urlWithTimestamp);
+      
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       
       const text = await response.text();
       let result;
-      try { result = JSON.parse(text); } catch (e) { throw new Error("ข้อมูลตอบกลับจาก Google Sheets ไม่ถูกต้อง (CORS/Deploy Issue)"); }
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        throw new Error("การเชื่อมต่อถูกบล็อก: URL เก่าหมดอายุ หรือยังไม่ได้ตั้งค่าสิทธิ์ให้ 'ทุกคน (Anyone)' เข้าถึง Web App");
+      }
       
       if (result && result.status === 'success') {
         if (result.data) {
           const sortedData = result.data.sort((a, b) => new Date(b.date) - new Date(a.date));
           setLogs(sortedData);
+          localStorage.setItem('waterQC_LogsCache', JSON.stringify(sortedData)); 
         }
         if (result.settings && result.settings.staffNames) {
           setSettings({ staffNames: result.settings.staffNames });
+          localStorage.setItem('waterQC_StaffCache', JSON.stringify({ staffNames: result.settings.staffNames }));
         }
         setSyncStatus('success');
       } else {
@@ -69,6 +78,12 @@ export default function App() {
       console.warn("Fetch Error:", error.message);
       setSyncStatus('error');
       setSheetError(error.message);
+      
+      const cachedLogs = localStorage.getItem('waterQC_LogsCache');
+      const cachedStaff = localStorage.getItem('waterQC_StaffCache');
+      if (cachedLogs) setLogs(JSON.parse(cachedLogs));
+      if (cachedStaff) setSettings(JSON.parse(cachedStaff));
+      
     } finally {
       setIsLoading(false);
     }
@@ -78,7 +93,7 @@ export default function App() {
     fetchLogsFromSheets();
   }, []);
 
-  // ฟังก์ชันบันทึกข้อมูลเดี่ยว
+  // 2. บันทึกข้อมูล
   const handleAddLog = async (formData) => {
     const phVal = parseFloat(formData.ph);
     const tdsVal = parseFloat(formData.tds);
@@ -91,18 +106,25 @@ export default function App() {
       critical_alert: needsCriticalAlert,
     };
 
-    setLogs(prev => [newLogEntry, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
+    const newLogs = [newLogEntry, ...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
+    setLogs(newLogs);
+    localStorage.setItem('waterQC_LogsCache', JSON.stringify(newLogs));
     setActiveTab('dashboard');
 
     try {
       await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-        method: 'POST', mode: 'no-cors', 
+        method: 'POST',
+        mode: 'no-cors', 
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'add', data: newLogEntry })
       });
-    } catch (err) { console.error("Save error:", err); }
+    } catch (err) {
+      console.error(err);
+      alert("ไม่สามารถอัปโหลดข้อมูลขึ้น Cloud ได้ ข้อมูลถูกบันทึกไว้ในเครื่องนี้แล้ว");
+    }
   };
 
-  // ฟังก์ชันแก้ไขข้อมูล
+  // 3. แก้ไขข้อมูล
   const handleEditLog = async (originalLog, newLogData) => {
     const phVal = parseFloat(newLogData.ph);
     const tdsVal = parseFloat(newLogData.tds);
@@ -129,7 +151,7 @@ export default function App() {
     } catch(e) { console.error(e); }
   };
 
-  // ฟังก์ชันลบข้อมูล
+  // 4. ลบข้อมูล
   const handleDeleteLog = async (logToDelete) => {
     setLogs(prev => prev.filter(l => !(l.date === logToDelete.date && l.location === logToDelete.location && l.poolNo === logToDelete.poolNo && l.ph === logToDelete.ph && l.tds === logToDelete.tds)));
     try {
@@ -141,16 +163,23 @@ export default function App() {
     } catch(e) { console.error(e); }
   };
 
+  // 5. อัปเดตรายชื่อ
   const updateStaff = async (newStaffList) => {
     setSettings({ staffNames: newStaffList }); 
+    localStorage.setItem('waterQC_StaffCache', JSON.stringify({ staffNames: newStaffList }));
     try {
       await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-        method: 'POST', mode: 'no-cors',
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update_settings', data: { staffNames: newStaffList } })
       });
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
+  // 6. นำเข้าข้อมูล
   const handleImportData = async (importedLogs, onProgress) => {
     try {
       if (onProgress) onProgress(0, importedLogs.length);
@@ -194,7 +223,7 @@ export default function App() {
       <header className="md:hidden bg-[#002D62] text-white p-4 flex justify-between items-center sticky top-0 z-50 shadow-md print:hidden">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-[#002D62] font-black">LH</div>
-          <span className="font-bold text-sm">Water Quality Monitoring</span>
+          <span className="font-bold text-sm">Water Quality</span>
         </div>
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2">
           {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
@@ -218,7 +247,7 @@ export default function App() {
         <div className="p-6 bg-blue-950/40 text-[10px] text-blue-400 border-t border-blue-900/50 italic flex flex-col gap-1">
           <div className="flex justify-between items-center mb-1">
             <span className="flex items-center gap-1">
-              <Database size={12}/> {syncStatus === 'success' ? 'ซิงค์ข้อมูลกับ Cloud สำเร็จ' : syncStatus === 'error' ? 'เชื่อมต่อ Cloud ไม่ได้' : 'กำลังเชื่อมต่อ Cloud...'}
+              <Database size={12}/> {syncStatus === 'success' ? 'ออนไลน์ (ซิงค์ข้อมูลแล้ว)' : syncStatus === 'error' ? 'ออฟไลน์' : 'กำลังเชื่อมต่อ...'}
             </span>
             {isAuthorized && <button onClick={() => setIsAuthorized(false)} title="Admin Logout" className="hover:text-white transition-colors"><Lock size={12}/></button>}
           </div>
@@ -249,7 +278,7 @@ export default function App() {
         {isLoading && (
           <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
              <Loader2 size={40} className="animate-spin text-[#002D62] mb-4" />
-             <p className="text-[#002D62] font-bold">กำลังดึงข้อมูลจาก Google Sheets...</p>
+             <p className="text-[#002D62] font-bold">กำลังดึงข้อมูลจาก Cloud...</p>
           </div>
         )}
         
@@ -258,7 +287,7 @@ export default function App() {
             <div className="flex items-start gap-3">
               <AlertTriangle className="text-red-500 mt-0.5 shrink-0" size={24} />
               <div>
-                <h3 className="text-red-800 font-bold">การเชื่อมต่อ Cloud ล้มเหลว</h3>
+                <h3 className="text-red-800 font-bold">การเชื่อมต่อล้มเหลว</h3>
                 <p className="text-red-600 text-xs sm:text-sm mt-1 leading-relaxed max-w-3xl">{sheetError}</p>
               </div>
             </div>
@@ -271,7 +300,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto">
           {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} hasError={syncStatus === 'error'} />}
           {activeTab === 'form' && <EntryForm onSubmit={handleAddLog} staffNames={settings.staffNames} />}
-          {activeTab === 'report' && <ReportView logs={logs} staffNames={settings.staffNames} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} onImport={handleImportData} onEdit={handleEditLog} onDelete={handleDeleteLog} />}
+          {activeTab === 'report' && <ReportView logs={logs} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} staffNames={settings.staffNames} onImport={handleImportData} onEdit={handleEditLog} onDelete={handleDeleteLog} />}
           {activeTab === 'settings' && <SettingsView settings={settings} onUpdateStaff={updateStaff} />}
         </div>
       </main>
@@ -284,6 +313,10 @@ export default function App() {
   );
 }
 
+// ----------------------------------------------------------------------
+// Component ย่อยต่างๆ
+// ----------------------------------------------------------------------
+
 function NavItem({ icon, label, active, onClick, isLocked }) {
   return (
     <button onClick={onClick} className={`w-full flex items-center justify-between gap-4 px-5 py-3 rounded-xl transition-all ${active ? 'bg-blue-700 text-white shadow-lg ring-1 ring-blue-500/50' : 'text-blue-100 hover:bg-blue-800/50'}`}>
@@ -293,7 +326,6 @@ function NavItem({ icon, label, active, onClick, isLocked }) {
   );
 }
 
-// --- Dashboard Component ---
 function Dashboard({ logs, period, setPeriod, hasError }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -431,7 +463,6 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
   );
 }
 
-// --- Report View Component with Edit/Delete ---
 function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -698,10 +729,127 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
   );
 }
 
+function EntryForm({ onSubmit, staffNames }) {
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    location: '',
+    poolNo: '1',
+    ph: '',
+    tds: '',
+    color: 'ใส',
+    odor: 'ไม่มีกลิ่น',
+    recorder: staffNames[0] || ''
+  });
+  const [alerts, setAlerts] = useState({});
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  useEffect(() => {
+    if (staffNames.length > 0 && (!formData.recorder || !staffNames.includes(formData.recorder))) {
+      setFormData(p => ({ ...p, recorder: staffNames[0] }));
+    }
+  }, [staffNames, formData.recorder]);
+
+  const validate = (name, val) => {
+    let msg = "";
+    const num = parseFloat(val);
+    if (name === 'ph' && (num < STANDARDS.ph.min || num > STANDARDS.ph.max)) msg = `ไม่อยู่ในเกณฑ์ (5.5 - 9.0)`;
+    if (name === 'tds' && num > STANDARDS.tds.max) msg = `เกินเกณฑ์ (1,000 mg/L)`;
+    setAlerts(prev => ({ ...prev, [name]: msg }));
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(p => ({ ...p, [name]: value }));
+    if (['ph', 'tds'].includes(name)) validate(name, value);
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (alerts.ph || alerts.tds) { setShowConfirmModal(true); return; }
+    onSubmit(formData);
+  };
+
+  const phVal = parseFloat(formData.ph);
+  const tdsVal = parseFloat(formData.tds);
+  const isCritical = (phVal < STANDARDS.alert_ph_min || phVal > STANDARDS.alert_ph_max || tdsVal > STANDARDS.alert_tds);
+
+  return (
+    <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
+        <div className="bg-[#002D62] p-8 md:p-10 text-white flex justify-between items-center">
+          <div>
+            <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3"><PlusCircle size={28} className="text-[#B8904F]" /> บันทึกผลการตรวจคุณภาพน้ำ</h2>
+            <p className="text-blue-200 mt-1 opacity-80 text-xs md:text-sm">ตรวจสอบเกณฑ์อัตโนมัติและส่งข้อมูลไปที่ Google Sheets</p>
+          </div>
+          <ClipboardList size={48} className="opacity-20 hidden sm:block" />
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 md:p-10 space-y-8 md:space-y-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <FormField label="วันที่ตรวจสอบ">
+              <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-medium" required />
+            </FormField>
+            
+            <FormField label="โครงการ">
+              <input type="text" name="location" value={formData.location} onChange={handleChange} placeholder="ระบุชื่อโครงการ" className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-medium" required />
+            </FormField>
+            
+            <FormField label="บ่อบำบัดจุดที่">
+              <select name="poolNo" value={formData.poolNo} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-bold text-center">
+                {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </FormField>
+            
+            <FormField label="เจ้าหน้าที่ผู้ตรวจ">
+              <select name="recorder" value={formData.recorder} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-bold">
+                {staffNames.length > 0 ? staffNames.map(s => <option key={s} value={s}>{s}</option>) : <option value="">กำลังโหลด...</option>}
+              </select>
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 bg-blue-50/40 p-6 md:p-8 rounded-3xl border border-blue-100 shadow-inner">
+            <FormField label={`ค่า pH (เกณฑ์ 5.5 - 9.0)`} alert={alerts.ph}>
+              <input type="number" step="0.1" name="ph" value={formData.ph} onChange={handleChange} className={`w-full p-4 rounded-2xl border transition-all text-xl font-black shadow-sm ${alerts.ph ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white focus:ring-2 focus:ring-[#002D62]'}`} required />
+            </FormField>
+            <FormField label={`ค่า TDS (เกณฑ์ไม่เกิน 1,000 mg/L)`} alert={alerts.tds}>
+              <input type="number" name="tds" value={formData.tds} onChange={handleChange} className={`w-full p-4 rounded-2xl border transition-all text-xl font-black shadow-sm ${alerts.tds ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white focus:ring-2 focus:ring-[#002D62]'}`} required />
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 md:gap-8">
+            <RadioBox label="ลักษณะสี" name="color" options={['ใส', 'ขุ่นเล็กน้อย', 'ขุ่น']} value={formData.color} onChange={handleChange} />
+            <RadioBox label="กลิ่น" name="odor" options={['ไม่มีกลิ่น', 'มีกลิ่นเล็กน้อย', 'มีกลิ่น']} value={formData.odor} onChange={handleChange} />
+          </div>
+
+          <button type="submit" className="w-full bg-[#002D62] hover:bg-[#003d82] text-white py-5 rounded-2xl font-black text-lg md:text-xl shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3">
+            <CheckCircle2 size={24} /> ยืนยันบันทึกผลไปยังระบบ Cloud
+          </button>
+        </form>
+      </div>
+
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 border-t-8 border-red-500">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 mx-auto shadow-inner"><AlertCircle size={32} /></div>
+            <h3 className="text-xl font-bold text-center text-gray-800 mb-2">ตรวจพบค่าที่ตกเกณฑ์</h3>
+            <p className="text-center text-gray-600 mb-8 leading-relaxed">
+              ค่าคุณภาพน้ำที่ระบุ <strong className="text-red-500">อยู่นอกเกณฑ์มาตรฐาน</strong>
+              <br/>
+              {isCritical && <span className="text-xs text-[#B8904F] mt-2 block bg-amber-50 p-2 rounded-lg font-bold">⚠️ จะมีการส่งอีเมลแจ้งเตือนวิกฤตไปที่ {STANDARDS.alert_email}</span>}
+            </p>
+            <div className="flex gap-4">
+              <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 border">ยกเลิก</button>
+              <button onClick={() => { setShowConfirmModal(false); onSubmit(formData); }} className="flex-1 py-3.5 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg transition-all">ยืนยันบันทึก</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FormField({ label, children, alert }) { return (<div className="space-y-2"><label className="block text-xs font-bold text-gray-400 uppercase tracking-widest">{label}</label>{children}{alert && <p className="text-red-500 text-[10px] font-bold flex items-center gap-1.5 animate-pulse italic"><AlertCircle size={12}/> {alert}</p>}</div>); }
 function RadioBox({ label, name, options, value, onChange }) { return (<div className="space-y-4"><label className="block text-xs font-bold text-gray-400 uppercase tracking-widest">{label}</label><div className="grid grid-cols-3 gap-2">{options.map(opt => (<label key={opt} className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 cursor-pointer transition-all ${value === opt ? 'bg-[#002D62] border-[#002D62] text-white shadow-lg scale-105' : 'bg-white border-gray-100 text-gray-400 hover:border-blue-200 hover:text-blue-500'}`}><input type="radio" name={name} value={opt} checked={value === opt} onChange={onChange} className="hidden" /><span className="text-[11px] md:text-sm font-bold text-center leading-tight">{opt}</span></label>))}</div></div>); }
 
-// --- Settings View Component ---
 function SettingsView({ settings, onUpdateStaff }) {
   const [name, setName] = useState('');
   return (
@@ -717,10 +865,10 @@ function SettingsView({ settings, onUpdateStaff }) {
       </div>
       <div className="bg-[#002D62] text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden">
         <div className="relative z-10">
-          <h3 className="text-lg font-bold mb-3 flex items-center gap-2 text-[#B8904F]"><AlertCircle size={20}/> ข้อมูลทางเทคนิค</h3>
+          <h3 className="text-lg font-bold mb-3 flex items-center gap-2 text-[#B8904F]"><AlertCircle size={20}/> ระบบแจ้งเตือนพิเศษ</h3>
           <p className="text-blue-100 text-xs md:text-sm opacity-90 leading-relaxed">
-            เกณฑ์มาตรฐาน: pH 5.5 - 9.0 และ TDS {'<'} 1,000 mg/L <br className="hidden md:block"/>
-            รหัสผ่านสำหรับเข้าถึงพื้นที่ส่วนบุคคลปัจจุบันคือ <span className="font-bold underline text-white">1312</span>
+            หากค่า pH {'<'} 5 หรือ {'>'} 9 หรือ TDS {'>'} 1,000 <br className="hidden md:block"/>
+            ระบบจะส่งแจ้งเตือนไปที่: <span className="font-bold underline text-white">kritsanapong@lh.co.th</span> ทันที
           </p>
         </div>
         <div className="absolute -bottom-10 -right-10 opacity-5"><SettingsIcon size={180} /></div>
