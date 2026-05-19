@@ -701,13 +701,14 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
                 <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center">TDS</th>
                 <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center hidden sm:table-cell">สี</th>
                 <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center hidden sm:table-cell">กลิ่น</th>
+                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center">ผู้บันทึก</th>
                 <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center">สถานะ</th>
                 <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center print:hidden">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 print:divide-gray-200">
               {filteredLogs.length === 0 ? (
-                <tr><td colSpan="8" className="p-8 md:p-10 text-center text-gray-400 text-sm font-medium italic">ไม่มีข้อมูลในเดือนนี้</td></tr>
+                <tr><td colSpan="9" className="p-8 md:p-10 text-center text-gray-400 text-sm font-medium italic">ไม่มีข้อมูลในเดือนนี้</td></tr>
               ) : (
                 filteredLogs.map((l, i) => {
                   const isPassed = (parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max);
@@ -722,6 +723,7 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
                       <td className="p-3 md:p-4 text-xs sm:text-sm text-center font-mono">{l.tds}</td>
                       <td className="p-3 md:p-4 text-xs sm:text-sm text-center hidden sm:table-cell">{l.color || '-'}</td>
                       <td className="p-3 md:p-4 text-xs sm:text-sm text-center hidden sm:table-cell">{l.odor || '-'}</td>
+                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center text-gray-600 truncate max-w-[120px]">{l.recorder || '-'}</td>
                       <td className="p-3 md:p-4 text-center">
                         <span className={`px-2 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase whitespace-nowrap ${isPassed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                           {isPassed ? 'ผ่าน' : 'ตกเกณฑ์'}
