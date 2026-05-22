@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 
 // ----------------------------------------------------------------------
-// 🔥 ตั้งค่า Google Sheets Webhook URL (นำ URL ใหม่มาใส่ที่นี่!)
+// 🔥 ตั้งค่า Google Sheets Webhook URL 
+// ⚠️ นำ URL อันใหม่ล่าสุดที่ตั้งสิทธิ์เป็น "ทุกคน (Anyone)" มาวางในเครื่องหมายคำพูดด้านล่างนี้
 // ----------------------------------------------------------------------
 const GOOGLE_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyBJbccynt4MhK62bW6x-aygqQRBdyWLDix9Ll_ab4L2rRC9dlpEUVzzajD-1Ad5kR_NA/exec";
 const GOOGLE_SHEETS_DIRECT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID_HERE/edit";
@@ -30,7 +31,7 @@ export default function App() {
   const [chartPeriod, setChartPeriod] = useState(6);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [syncStatus, setSyncStatus] = useState('loading');
+  const [syncStatus, setSyncStatus] = useState('loading'); // loading, success, error
   const [sheetError, setSheetError] = useState(null);
   
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -45,9 +46,7 @@ export default function App() {
       setSyncStatus('loading');
       setSheetError(null);
       
-      const urlWithTimestamp = `${GOOGLE_SHEETS_WEBHOOK_URL}?t=${new Date().getTime()}`;
-      const response = await fetch(urlWithTimestamp);
-      
+      const response = await fetch(GOOGLE_SHEETS_WEBHOOK_URL);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       
       const text = await response.text();
@@ -55,7 +54,7 @@ export default function App() {
       try {
         result = JSON.parse(text);
       } catch (e) {
-        throw new Error("การเชื่อมต่อถูกบล็อก: URL หมดอายุ หรือไม่ได้ตั้งค่าสิทธิ์ให้ 'ทุกคน (Anyone)' เข้าถึง Web App");
+        throw new Error("ระบบถูกบล็อก (CORS): โปรดกลับไปหน้า Google Apps Script แล้ว Deploy แบบ 'New Deployment' และตั้งค่าผู้เข้าถึงเป็น 'ทุกคน (Anyone)'");
       }
       
       if (result && result.status === 'success') {
@@ -70,12 +69,17 @@ export default function App() {
         }
         setSyncStatus('success');
       } else {
-        throw new Error(result.message || "รูปแบบข้อมูลจากตารางไม่ถูกต้อง");
+        throw new Error("รูปแบบข้อมูลจากตารางไม่ถูกต้อง");
       }
     } catch (error) {
       console.warn("Fetch Error:", error.message);
       setSyncStatus('error');
-      setSheetError(error.message);
+      
+      if (error.name === 'TypeError' || error.message.includes('Failed to fetch')) {
+        setSheetError("การเชื่อมต่อถูกบล็อก (Failed to fetch): URL หมดอายุ หรือไม่ได้ตั้งค่าสิทธิ์ให้ 'ทุกคน (Anyone)' เข้าถึง Web App");
+      } else {
+        setSheetError(error.message);
+      }
       
       const cachedLogs = localStorage.getItem('waterQC_LogsCache');
       const cachedStaff = localStorage.getItem('waterQC_StaffCache');
@@ -111,7 +115,8 @@ export default function App() {
 
     try {
       await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-        method: 'POST', mode: 'no-cors', 
+        method: 'POST',
+        mode: 'no-cors', 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'add', data: newLogEntry })
       });
@@ -163,11 +168,14 @@ export default function App() {
     localStorage.setItem('waterQC_StaffCache', JSON.stringify({ staffNames: newStaffList }));
     try {
       await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-        method: 'POST', mode: 'no-cors',
+        method: 'POST',
+        mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update_settings', data: { staffNames: newStaffList } })
       });
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleImportData = async (importedLogs, onProgress) => {
@@ -180,7 +188,10 @@ export default function App() {
       if (onProgress) onProgress(importedLogs.length, importedLogs.length);
       setTimeout(() => fetchLogsFromSheets(), 2000); 
       return true;
-    } catch (err) { return false; }
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
   };
 
   const handleTabChange = (tabId) => {
@@ -211,10 +222,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans overflow-x-hidden">
-      {/* Mobile Header (Sticky & Responsive) */}
+      {/* Mobile Header */}
       <header className="md:hidden bg-[#002D62] text-white p-4 flex justify-between items-center sticky top-0 z-50 shadow-md print:hidden">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-[#002D62] font-black text-sm">LH</div>
+          <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-[#002D62] font-black">LH</div>
           <span className="font-bold text-sm tracking-wide">Water Quality</span>
         </div>
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 -mr-2 active:scale-90 transition-transform">
@@ -222,7 +233,7 @@ export default function App() {
         </button>
       </header>
 
-      {/* Sidebar (Responsive Overlay on Mobile) */}
+      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-[280px] bg-[#002D62] text-white flex flex-col shadow-2xl transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:h-screen print:hidden`}>
         <div className="p-6 md:p-8 border-b border-blue-900/50 mt-14 md:mt-0">
           <div className="flex items-center gap-3 mb-2">
@@ -240,17 +251,16 @@ export default function App() {
         <div className="p-4 md:p-6 bg-blue-950/40 text-[10px] text-blue-400 border-t border-blue-900/50 italic flex flex-col gap-1">
           <div className="flex justify-between items-center mb-1">
             <span className="flex items-center gap-1.5 truncate">
-              <Database size={12}/> {syncStatus === 'success' ? 'ซิงค์ข้อมูลแล้ว' : syncStatus === 'error' ? 'เชื่อมต่อล้มเหลว' : 'กำลังเชื่อมต่อ...'}
+              <Database size={12}/> {syncStatus === 'success' ? 'ออนไลน์ (ซิงค์แล้ว)' : syncStatus === 'error' ? 'ออฟไลน์ (ใช้ข้อมูลเดิม)' : 'กำลังเชื่อมต่อ...'}
             </span>
             {isAuthorized && <button onClick={() => setIsAuthorized(false)} title="Admin Logout" className="p-1 hover:text-white transition-colors bg-blue-900/50 rounded"><Lock size={12}/></button>}
           </div>
         </div>
       </aside>
 
-      {/* Overlay for mobile sidebar */}
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)}></div>}
 
-      {/* Password Modal (Responsive) */}
+      {/* Password Modal */}
       {showPasswordInput && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-4">
           <div className="bg-white rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
@@ -258,7 +268,7 @@ export default function App() {
             <h3 className="text-lg md:text-xl font-bold text-center text-gray-800 mb-2">พื้นที่ส่วนบุคคล</h3>
             <p className="text-center text-gray-500 text-xs md:text-sm mb-6">กรุณากรอกรหัสผ่านเพื่อเข้าถึงหน้านี้</p>
             <form onSubmit={checkPassword} className="space-y-4">
-              <input type="password" inputMode="numeric" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="ระบุรหัสผ่าน" className={`w-full p-3 md:p-4 text-center text-xl md:text-2xl tracking-[1em] rounded-2xl border-2 outline-none transition-all ${passError ? 'border-red-500 bg-red-50 text-red-600' : 'border-gray-100 bg-gray-50 focus:border-[#002D62]'}`} />
+              <input autoFocus type="password" inputMode="numeric" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="ระบุรหัสผ่าน" className={`w-full p-3 md:p-4 text-center text-xl md:text-2xl tracking-[1em] rounded-2xl border-2 outline-none transition-all ${passError ? 'border-red-500 bg-red-50 text-red-600' : 'border-gray-100 bg-gray-50 focus:border-[#002D62]'}`} />
               {passError && <p className="text-red-500 text-xs text-center font-bold">รหัสผ่านไม่ถูกต้อง</p>}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowPasswordInput(false)} className="flex-1 py-3 text-sm font-bold text-gray-400 active:scale-95 transition-transform">ยกเลิก</button>
@@ -269,7 +279,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Content Area (Fluid & Responsive) */}
+      {/* Main Content Area */}
       <main className="flex-1 p-4 sm:p-6 md:p-10 w-full overflow-x-hidden print:p-0 print:bg-white relative">
         {isLoading && (
           <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
@@ -278,7 +288,6 @@ export default function App() {
           </div>
         )}
         
-        {/* Error Banner */}
         {sheetError && (
           <div className="max-w-7xl mx-auto mb-4 md:mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-in slide-in-from-top-4">
             <div className="flex items-start gap-3">
@@ -304,7 +313,6 @@ export default function App() {
 
       <style dangerouslySetInnerHTML={{ __html: `
         @media print { body { background: white !important; } .print-hidden { display: none !important; } .print-only { display: block !important; } @page { margin: 1cm; } }
-        /* Custom Scrollbar for better mobile/desktop feel */
         .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; } 
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 8px;} 
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
@@ -317,10 +325,7 @@ export default function App() {
 function NavItem({ icon, label, active, onClick, isLocked }) {
   return (
     <button onClick={onClick} className={`w-full flex items-center justify-between gap-3 px-4 py-3 md:px-5 rounded-xl transition-all ${active ? 'bg-blue-700 text-white shadow-md ring-1 ring-blue-500/50' : 'text-blue-100 hover:bg-blue-800/50 active:bg-blue-800'}`}>
-      <div className="flex items-center gap-3">
-        {icon}
-        <span className="font-semibold text-sm md:text-base">{label}</span>
-      </div>
+      <div className="flex items-center gap-3">{icon}<span className="font-semibold text-sm md:text-base">{label}</span></div>
       {isLocked && <Lock size={14} className="opacity-40" />}
     </button>
   );
@@ -380,6 +385,7 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
         ph: Number((item.phSum / item.count).toFixed(2)),
         tds: Number((item.tdsSum / item.count).toFixed(0))
       }));
+      
   }, [logs, period, selectedMonth, selectedYear]);
 
   return (
@@ -396,29 +402,17 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
             </select>
           </div>
           <div className="flex bg-white rounded-lg shadow-sm border p-1 w-full sm:w-auto">
-            {[3, 6].map(m => (
-              <button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-bold transition-colors ${period === m ? 'bg-[#002D62] text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
-                กราฟ {m} เดือน
-              </button>
-            ))}
+            {[3, 6].map(m => (<button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-bold transition-colors ${period === m ? 'bg-[#002D62] text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>กราฟ {m} เดือน</button>))}
           </div>
         </div>
       </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-6">
         <StatCard title={`โครงการที่ตรวจ (${months[selectedMonth]})`} value={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<LayoutDashboard className="text-[#002D62] w-5 h-5 md:w-6 md:h-6" />} color="border-[#002D62]" />
         <StatCard title={`บ่อบำบัดที่ตรวจ (${months[selectedMonth]})`} value={stats.totalInspections} description={`จำนวนครั้งที่บันทึกผล`} icon={<ClipboardList className="text-blue-500 w-5 h-5 md:w-6 md:h-6" />} color="border-blue-500" />
         <StatCard title={`โครงการที่ไม่ผ่าน (${months[selectedMonth]})`} value={stats.failedCount} total={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<AlertCircle className="text-red-500 w-5 h-5 md:w-6 md:h-6" />} color="border-red-500" />
-        <StatCard 
-          title="เซิร์ฟเวอร์ (Sheets)" 
-          value={hasError ? "ออฟไลน์" : "ออนไลน์"} 
-          description={hasError ? "ใช้ข้อมูลในเครื่อง" : "ข้อมูลซิงค์เรียลไทม์"} 
-          icon={hasError ? <XCircle className="text-red-500 w-5 h-5 md:w-6 md:h-6" /> : <Database className="text-[#16A34A] w-5 h-5 md:w-6 md:h-6" />} 
-          color={hasError ? "border-red-500" : "border-[#16A34A]"} 
-        />
+        <StatCard title="เซิร์ฟเวอร์ (Sheets)" value={hasError ? "ออฟไลน์" : "ออนไลน์"} description={hasError ? "ใช้ข้อมูลในเครื่อง" : "ข้อมูลซิงค์เรียลไทม์"} icon={hasError ? <XCircle className="text-red-500 w-5 h-5 md:w-6 md:h-6" /> : <Database className="text-[#16A34A] w-5 h-5 md:w-6 md:h-6" />} color={hasError ? "border-red-500" : "border-[#16A34A]"} />
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 lg:gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6 lg:gap-8">
         <ChartBox title={`แนวโน้มค่าเฉลี่ย pH (${period} เดือน)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
         <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS (${period} เดือน)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
       </div>
@@ -458,13 +452,8 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} style={{ fontSize: '10px' }} dy={10} />
               <YAxis axisLine={false} tickLine={false} style={{ fontSize: '10px' }} domain={yDomain} />
-              <Tooltip 
-                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' }} 
-                formatter={(value) => [value, `ค่าเฉลี่ย ${dataKey.toUpperCase()}`]}
-              />
-              {limits.map((limit, idx) => (
-                <ReferenceLine key={idx} y={limit} stroke="#ef4444" strokeDasharray="4 4" label={{ position: 'insideTopRight', value: `เกณฑ์ ${limit}`, fill: '#ef4444', fontSize: 9, fontWeight: 'bold' }} />
-              ))}
+              <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' }} formatter={(value) => [value, `ค่าเฉลี่ย ${dataKey.toUpperCase()}`]} />
+              {limits.map((limit, idx) => (<ReferenceLine key={idx} y={limit} stroke="#ef4444" strokeDasharray="4 4" label={{ position: 'insideTopRight', value: `เกณฑ์ ${limit}`, fill: '#ef4444', fontSize: 9, fontWeight: 'bold' }} />))}
               <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.5} dot={{ r: 3, fill: color, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 5 }} />
             </LineChart>
           ) : (
@@ -631,7 +620,6 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
         </div>
       )}
 
-      {/* Header & Filters */}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white p-4 md:p-6 rounded-xl md:rounded-2xl shadow-sm border border-gray-100 print:hidden">
         <div>
           <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-[#002D62]">รายงานสรุปคุณภาพน้ำ</h2>
@@ -653,7 +641,6 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
         <p className="text-xs sm:text-sm text-gray-500">พิมพ์เมื่อ: {new Date().toLocaleDateString('th-TH')} {new Date().toLocaleTimeString('th-TH')}</p>
       </div>
 
-      {/* Action Buttons (Responsive Grid) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 print:hidden">
         <button onClick={() => window.print()} className="flex flex-col sm:flex-row items-center justify-center gap-2 bg-[#002D62] text-white p-3 md:p-4 rounded-xl md:rounded-2xl font-bold shadow-md hover:bg-[#003d82] transition-colors active:scale-95 text-xs sm:text-sm">
           <Printer size={18} /> <span className="hidden sm:inline">พิมพ์ (PDF)</span><span className="sm:hidden">พิมพ์ PDF</span>
@@ -689,10 +676,9 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
         </button>
       </div>
 
-      {/* Table (Responsive Scroll) */}
       <div className="bg-white rounded-xl md:rounded-2xl shadow-sm overflow-hidden border border-gray-100 print:shadow-none print:border-none">
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[700px]">
+          <table className="w-full text-left border-collapse min-w-[800px]">
             <thead>
               <tr className="bg-slate-50 border-b border-gray-100 print:bg-gray-100 print:border-gray-300">
                 <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase whitespace-nowrap">วันที่</th>
@@ -896,7 +882,6 @@ function RadioBox({ label, name, options, value, onChange }) {
   ); 
 }
 
-// --- Settings View Component ---
 function SettingsView({ settings, onUpdateStaff }) {
   const [name, setName] = useState('');
   return (
