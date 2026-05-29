@@ -485,6 +485,14 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
     });
   }, [logs, selectedMonth, selectedYear]);
 
+  // คำนวณข้อมูลสรุปสำหรับแสดงในรายงาน PDF
+  const printUniqueLocations = new Set(filteredLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
+  const printTotalInspections = filteredLogs.length;
+  const failedProjectsLogs = filteredLogs.filter(l => 
+    parseFloat(l.ph) < STANDARDS.ph.min || parseFloat(l.ph) > STANDARDS.ph.max || parseFloat(l.tds) > STANDARDS.tds.max
+  );
+  const printFailedLocations = new Set(failedProjectsLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
+
   const handleCSVImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -635,11 +643,42 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
         </div>
       </div>
 
-      <div className="hidden print:block text-center space-y-2 mb-8 border-b-2 border-[#002D62] pb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-[#002D62]">รายงานผลการตรวจคุณภาพน้ำเสีย</h1>
-        <p className="text-lg sm:text-xl font-semibold">ประจำเดือน {months[selectedMonth]} ปี พ.ศ. {parseInt(selectedYear) + 543}</p>
-        <p className="text-xs sm:text-sm text-gray-500">พิมพ์เมื่อ: {new Date().toLocaleDateString('th-TH')} {new Date().toLocaleTimeString('th-TH')}</p>
+      {/* --- ส่วนหัวรายงานสำหรับหน้า PDF สไตล์ Land and Houses --- */}
+      <div className="hidden print:block mb-8">
+        {/* โลโก้และชื่อรายงาน */}
+        <div className="flex justify-between items-end border-b-4 border-[#B8904F] pb-4 mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-[#002D62] rounded-xl flex items-center justify-center border-2 border-[#B8904F]">
+              <span className="text-white font-black text-3xl">LH</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-[#002D62] uppercase tracking-wide">รายงานผลการตรวจคุณภาพน้ำเสีย</h1>
+              <p className="text-lg font-bold text-gray-600 mt-1">ประจำเดือน {months[selectedMonth]} พ.ศ. {parseInt(selectedYear) + 543}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-sm font-bold text-[#002D62] mb-1">โครงการในเครือ Land and Houses</p>
+            <p className="text-xs text-gray-500">พิมพ์เมื่อ: {new Date().toLocaleDateString('th-TH')} {new Date().toLocaleTimeString('th-TH')}</p>
+          </div>
+        </div>
+
+        {/* ข้อมูลสรุป */}
+        <div className="grid grid-cols-3 gap-6 mb-2">
+          <div className="border-2 border-[#002D62] rounded-xl p-4 text-center bg-white">
+            <p className="text-sm font-bold text-gray-600 uppercase mb-2">โครงการที่ตรวจทั้งหมด</p>
+            <p className="text-3xl font-black text-[#002D62]">{printUniqueLocations} <span className="text-sm text-gray-500 font-medium">โครงการ</span></p>
+          </div>
+          <div className="border-2 border-blue-400 rounded-xl p-4 text-center bg-white">
+            <p className="text-sm font-bold text-gray-600 uppercase mb-2">บ่อบำบัดที่ตรวจทั้งหมด</p>
+            <p className="text-3xl font-black text-blue-600">{printTotalInspections} <span className="text-sm text-gray-500 font-medium">บ่อ</span></p>
+          </div>
+          <div className="border-2 border-red-500 rounded-xl p-4 text-center bg-red-50">
+            <p className="text-sm font-bold text-red-700 uppercase mb-2">โครงการที่ไม่ผ่านเกณฑ์</p>
+            <p className="text-3xl font-black text-red-600">{printFailedLocations} <span className="text-sm text-red-400 font-medium">โครงการ</span></p>
+          </div>
+        </div>
       </div>
+      {/* ---------------------------------------------------- */}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 print:hidden">
         <button onClick={() => window.print()} className="flex flex-col sm:flex-row items-center justify-center gap-2 bg-[#002D62] text-white p-3 md:p-4 rounded-xl md:rounded-2xl font-bold shadow-md hover:bg-[#003d82] transition-colors active:scale-95 text-xs sm:text-sm">
@@ -678,17 +717,17 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
 
       <div className="bg-white rounded-xl md:rounded-2xl shadow-sm overflow-hidden border border-gray-100 print:shadow-none print:border-none">
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[800px]">
+          <table className="w-full text-left border-collapse min-w-[800px] print:min-w-full">
             <thead>
-              <tr className="bg-slate-50 border-b border-gray-100 print:bg-gray-100 print:border-gray-300">
-                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase whitespace-nowrap">วันที่</th>
-                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase whitespace-nowrap">โครงการ / บ่อ</th>
-                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center">pH</th>
-                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center">TDS</th>
-                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center hidden sm:table-cell">สี</th>
-                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center hidden sm:table-cell">กลิ่น</th>
-                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center">ผู้บันทึก</th>
-                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center">สถานะ</th>
+              <tr className="bg-slate-50 border-b border-gray-100 print:bg-[#002D62] print:border-[#002D62]">
+                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase whitespace-nowrap print:text-white print:py-3">วันที่</th>
+                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase whitespace-nowrap print:text-white print:py-3">โครงการ / บ่อ</th>
+                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3">pH</th>
+                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3">TDS</th>
+                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center hidden sm:table-cell print:table-cell print:text-white print:py-3">สี</th>
+                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center hidden sm:table-cell print:table-cell print:text-white print:py-3">กลิ่น</th>
+                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3">ผู้บันทึก</th>
+                <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3">สถานะ</th>
                 <th className="p-3 md:p-4 text-[10px] sm:text-xs font-bold text-gray-500 uppercase text-center print:hidden">จัดการ</th>
               </tr>
             </thead>
@@ -699,19 +738,19 @@ function ReportView({ logs, sheetUrl, onImport, staffNames, onEdit, onDelete }) 
                 filteredLogs.map((l, i) => {
                   const isPassed = (parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max);
                   return (
-                    <tr key={i} className="hover:bg-blue-50/30 transition-colors print:hover:bg-transparent group">
-                      <td className="p-3 md:p-4 text-xs sm:text-sm font-semibold text-gray-700 whitespace-nowrap">{l.date}</td>
-                      <td className="p-3 md:p-4 text-xs sm:text-sm text-gray-600 max-w-[200px] truncate">
+                    <tr key={i} className="hover:bg-blue-50/30 transition-colors print:hover:bg-transparent print:border-b print:border-gray-300 group">
+                      <td className="p-3 md:p-4 text-xs sm:text-sm font-semibold text-gray-700 print:text-gray-800 whitespace-nowrap">{l.date}</td>
+                      <td className="p-3 md:p-4 text-xs sm:text-sm text-gray-600 print:text-gray-800 max-w-[200px] truncate print:max-w-none print:whitespace-normal">
                         <span className="font-bold">{l.location}</span> 
-                        {l.poolNo && <span className="ml-1.5 sm:ml-2 text-[10px] font-bold text-[#B8904F] bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 whitespace-nowrap">บ่อ {l.poolNo}</span>}
+                        {l.poolNo && <span className="ml-1.5 sm:ml-2 text-[10px] font-bold text-[#B8904F] bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 whitespace-nowrap print:bg-transparent print:border-[#B8904F] print:text-[#B8904F]">บ่อ {l.poolNo}</span>}
                       </td>
-                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center font-mono">{l.ph}</td>
-                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center font-mono">{l.tds}</td>
-                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center hidden sm:table-cell">{l.color || '-'}</td>
-                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center hidden sm:table-cell">{l.odor || '-'}</td>
-                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center text-gray-600 truncate max-w-[120px]">{l.recorder || '-'}</td>
+                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center font-mono print:text-gray-800">{l.ph}</td>
+                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center font-mono print:text-gray-800">{l.tds}</td>
+                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center hidden sm:table-cell print:table-cell print:text-gray-800">{l.color || '-'}</td>
+                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center hidden sm:table-cell print:table-cell print:text-gray-800">{l.odor || '-'}</td>
+                      <td className="p-3 md:p-4 text-xs sm:text-sm text-center text-gray-600 print:text-gray-800 truncate max-w-[120px] print:max-w-none">{l.recorder || '-'}</td>
                       <td className="p-3 md:p-4 text-center">
-                        <span className={`px-2 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase whitespace-nowrap ${isPassed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        <span className={`px-2 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase whitespace-nowrap ${isPassed ? 'bg-green-100 text-green-700 print:bg-transparent print:border print:border-green-600 print:text-green-700' : 'bg-red-100 text-red-700 print:bg-transparent print:border print:border-red-600 print:text-red-700'}`}>
                           {isPassed ? 'ผ่าน' : 'ตกเกณฑ์'}
                         </span>
                       </td>
