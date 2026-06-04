@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine 
@@ -29,7 +30,6 @@ const STANDARDS = {
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [logs, setLogs] = useState([]);
-  // ปรับโครงสร้าง State ให้รองรับ ข้อมูลพนักงานและโครงการที่ผูกไว้
   const [settings, setSettings] = useState({ staffData: [] });
   const [chartPeriod, setChartPeriod] = useState(6);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -421,13 +421,14 @@ function ReportView({ logs, sheetUrl }) {
     });
   }, [logs, selectedMonth, selectedYear]);
 
+  // คำนวณสรุปผล สำหรับ PDF (นับตามบ่อ)
   const printUniqueLocations = new Set(filteredLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
-  const printTotalInspections = filteredLogs.length;
-  const failedProjectsLogs = filteredLogs.filter(l => 
+  const printTotalInspections = filteredLogs.length; // จำนวนบ่อบำบัดทั้งหมด
+  const failedPondsLogs = filteredLogs.filter(l => 
     parseFloat(l.ph) < STANDARDS.ph.min || parseFloat(l.ph) > STANDARDS.ph.max || parseFloat(l.tds) > STANDARDS.tds.max
   );
-  const printFailedLocations = new Set(failedProjectsLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
-
+  const printFailedPonds = failedPondsLogs.length; // จำนวนบ่อที่ไม่ผ่าน
+  const printPassedPonds = printTotalInspections - printFailedPonds; // จำนวนบ่อที่ผ่าน
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 relative">
@@ -463,18 +464,24 @@ function ReportView({ logs, sheetUrl }) {
             <p className="text-xs text-gray-500">พิมพ์เมื่อ: {new Date().toLocaleDateString('th-TH')} {new Date().toLocaleTimeString('th-TH')}</p>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-6 mb-2">
-          <div className="border-2 border-[#002D62] rounded-xl p-4 text-center bg-white">
-            <p className="text-sm font-bold text-gray-600 uppercase mb-2">โครงการที่ตรวจทั้งหมด</p>
-            <p className="text-3xl font-black text-[#002D62]">{printUniqueLocations} <span className="text-sm text-gray-500 font-medium">โครงการ</span></p>
+        
+        {/* กล่องสรุป 4 หัวข้อใหม่ สำหรับ PDF */}
+        <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="border border-[#002D62] rounded-xl p-3 text-center bg-white shadow-sm">
+            <p className="text-[11px] font-bold text-gray-500 uppercase mb-1">โครงการที่ตรวจ</p>
+            <p className="text-2xl font-black text-[#002D62]">{printUniqueLocations} <span className="text-xs text-gray-400 font-medium">แห่ง</span></p>
           </div>
-          <div className="border-2 border-blue-400 rounded-xl p-4 text-center bg-white">
-            <p className="text-sm font-bold text-gray-600 uppercase mb-2">บ่อบำบัดที่ตรวจทั้งหมด</p>
-            <p className="text-3xl font-black text-blue-600">{printTotalInspections} <span className="text-sm text-gray-500 font-medium">บ่อ</span></p>
+          <div className="border border-blue-400 rounded-xl p-3 text-center bg-white shadow-sm">
+            <p className="text-[11px] font-bold text-gray-500 uppercase mb-1">บ่อบำบัดที่ตรวจ</p>
+            <p className="text-2xl font-black text-blue-600">{printTotalInspections} <span className="text-xs text-gray-400 font-medium">บ่อ</span></p>
           </div>
-          <div className="border-2 border-red-500 rounded-xl p-4 text-center bg-red-50">
-            <p className="text-sm font-bold text-red-700 uppercase mb-2">โครงการที่ไม่ผ่านเกณฑ์</p>
-            <p className="text-3xl font-black text-red-600">{printFailedLocations} <span className="text-sm text-red-400 font-medium">โครงการ</span></p>
+          <div className="border border-green-500 rounded-xl p-3 text-center bg-green-50 shadow-sm">
+            <p className="text-[11px] font-bold text-green-700 uppercase mb-1">บ่อที่ผลผ่านเกณฑ์</p>
+            <p className="text-2xl font-black text-green-600">{printPassedPonds} <span className="text-xs text-green-500 font-medium">บ่อ</span></p>
+          </div>
+          <div className="border border-red-500 rounded-xl p-3 text-center bg-red-50 shadow-sm">
+            <p className="text-[11px] font-bold text-red-700 uppercase mb-1">บ่อที่ผลเกินเกณฑ์</p>
+            <p className="text-2xl font-black text-red-600">{printFailedPonds} <span className="text-xs text-red-400 font-medium">บ่อ</span></p>
           </div>
         </div>
       </div>
@@ -485,8 +492,8 @@ function ReportView({ logs, sheetUrl }) {
           <Printer size={20} /> พิมพ์ (PDF)
         </button>
         <button onClick={() => {
-          const headers = ["วันที่", "โครงการ", "บ่อที่", "pH", "TDS", "สี", "กลิ่น", "ผู้บันทึก", "สถานะ"];
-          const rows = filteredLogs.map(l => [l.date, l.location, l.poolNo || '1', l.ph, l.tds, l.color, l.odor, l.recorder, (parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max) ? "ผ่าน" : "ไม่ผ่าน"]);
+          const headers = ["วันที่", "โครงการ", "บ่อที่", "pH", "TDS", "สี", "กลิ่น", "ผู้บันทึก", "สถานะ", "หมายเหตุ"];
+          const rows = filteredLogs.map(l => [l.date, l.location, l.poolNo || '1', l.ph, l.tds, l.color, l.odor, l.recorder, (parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max) ? "ผ่าน" : "ไม่ผ่าน", l.remarks || ""]);
           const csvContent = "\uFEFF" + headers.join(",") + "\n" + rows.map(r => r.join(",")).join("\n");
           const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
           const url = URL.createObjectURL(blob);
@@ -510,17 +517,18 @@ function ReportView({ logs, sheetUrl }) {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-gray-100 print:bg-[#002D62] print:border-[#002D62]">
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-white print:py-3">วันที่</th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-white print:py-3">โครงการ / บ่อจุดที่</th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3">pH</th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3">TDS</th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3">ผู้บันทึก</th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3">สถานะ</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-white print:py-3 whitespace-nowrap">วันที่</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-white print:py-3 whitespace-nowrap">โครงการ / บ่อจุดที่</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap">pH</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap">TDS</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap hidden sm:table-cell print:table-cell">ผู้บันทึก</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap">สถานะ</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-white print:py-3 whitespace-nowrap">หมายเหตุ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 print:divide-gray-200">
               {filteredLogs.length === 0 ? (
-                <tr><td colSpan="6" className="p-10 text-center text-gray-400 font-medium italic">ยังไม่มีข้อมูลในเดือนนี้</td></tr>
+                <tr><td colSpan="7" className="p-10 text-center text-gray-400 font-medium italic">ยังไม่มีข้อมูลในเดือนนี้</td></tr>
               ) : (
                 filteredLogs.map((l, i) => {
                   const isPassed = (parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max);
@@ -533,11 +541,14 @@ function ReportView({ logs, sheetUrl }) {
                       </td>
                       <td className="p-4 text-sm text-center font-mono print:text-black">{l.ph}</td>
                       <td className="p-4 text-sm text-center font-mono print:text-black">{l.tds}</td>
-                      <td className="p-4 text-sm text-center text-gray-600 print:text-black">{l.recorder || '-'}</td>
+                      <td className="p-4 text-sm text-center text-gray-600 print:text-black hidden sm:table-cell print:table-cell truncate max-w-[100px]">{l.recorder || '-'}</td>
                       <td className="p-4 text-center">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${isPassed ? 'bg-green-100 text-green-700 print:bg-transparent print:border print:border-green-600 print:text-green-700' : 'bg-red-100 text-red-700 print:bg-transparent print:border print:border-red-600 print:text-red-700'}`}>
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase whitespace-nowrap ${isPassed ? 'bg-green-100 text-green-700 print:bg-transparent print:border print:border-green-600 print:text-green-700' : 'bg-red-100 text-red-700 print:bg-transparent print:border print:border-red-600 print:text-red-700'}`}>
                           {isPassed ? 'ผ่าน' : 'ตกเกณฑ์'}
                         </span>
+                      </td>
+                      <td className="p-4 text-xs text-gray-500 print:text-black max-w-[150px] truncate print:max-w-none print:whitespace-normal">
+                        {l.remarks || '-'}
                       </td>
                     </tr>
                   )
@@ -547,8 +558,8 @@ function ReportView({ logs, sheetUrl }) {
           </table>
         </div>
       </div>
-      
-      {/* เพิ่มช่องสำหรับลายเซ็นตอน Print */}
+
+      {/* ลายเซ็นสำหรับ PDF */}
       <div className="hidden print:block mt-16 grid grid-cols-2 gap-20">
         <div className="text-center">
           <p className="mb-20 italic text-gray-300">ลงชื่อ......................................................</p>
@@ -573,12 +584,12 @@ function EntryForm({ onSubmit, staffData }) {
     tds: '',
     color: 'ใส',
     odor: 'ไม่มีกลิ่น',
-    recorder: ''
+    recorder: '',
+    remarks: '' // ฟิลด์ใหม่
   });
   const [alerts, setAlerts] = useState({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  // ตั้งค่าเริ่มต้นเมื่อข้อมูลพนักงานโหลดเสร็จ
   useEffect(() => {
     if (staffData && staffData.length > 0 && !formData.recorder) {
       const firstStaff = staffData[0];
@@ -600,8 +611,6 @@ function EntryForm({ onSubmit, staffData }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    
-    // หากมีการเปลี่ยนชื่อผู้บันทึก ให้ดึงโครงการแรกของคนนั้นมาแสดงทันที
     if (name === 'recorder') {
       const staff = staffData.find(s => s.name === value);
       const newLocation = staff && staff.projects && staff.projects.length > 0 ? staff.projects[0] : '';
@@ -622,7 +631,6 @@ function EntryForm({ onSubmit, staffData }) {
   const tdsVal = parseFloat(formData.tds);
   const isCritical = (phVal < STANDARDS.alert_ph_min || phVal > STANDARDS.alert_ph_max || tdsVal > STANDARDS.alert_tds);
 
-  // ดึงรายการโครงการของพนักงานที่ถูกเลือก
   const currentStaff = staffData?.find(s => s.name === formData.recorder);
   const availableProjects = currentStaff?.projects || [];
 
@@ -679,8 +687,21 @@ function EntryForm({ onSubmit, staffData }) {
             <RadioBox label="กลิ่น" name="odor" options={['ไม่มีกลิ่น', 'มีกลิ่นเล็กน้อย', 'มีกลิ่น']} value={formData.odor} onChange={handleChange} />
           </div>
 
+          <div className="border-t border-gray-100 pt-8">
+            <FormField label="หมายเหตุ (ถ้ามี)">
+              <textarea 
+                name="remarks" 
+                value={formData.remarks} 
+                onChange={handleChange} 
+                rows="3"
+                placeholder="ระบุความผิดปกติ หรือข้อเสนอแนะเพิ่มเติม..." 
+                className="w-full p-4 rounded-2xl border border-gray-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002D62] outline-none font-medium resize-none"
+              ></textarea>
+            </FormField>
+          </div>
+
           <button type="submit" className="w-full bg-[#002D62] hover:bg-[#003d82] text-white py-5 rounded-2xl font-black text-lg md:text-xl shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3">
-            <CheckCircle2 size={24} /> ยืนยันบันทึกผลไปยังระบบ Cloud
+            <CheckCircle2 size={24} /> ยืนยันบันทึกผลไปยัง Google Sheets
           </button>
         </form>
       </div>
