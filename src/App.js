@@ -166,23 +166,23 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans overflow-x-hidden">
-      <header className="md:hidden bg-[#002D62] text-white p-4 flex justify-between items-center sticky top-0 z-50 shadow-md print:hidden">
+      <header className="md:hidden bg-[#047857] text-white p-4 flex justify-between items-center sticky top-0 z-50 shadow-md print:hidden">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-[#002D62] font-black">LH</div>
-          <span className="font-bold text-sm">Water Quality Monitoring</span>
+          <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-[#047857] font-black">LH</div>
+          <span className="font-bold text-sm">ENVI-Follow</span>
         </div>
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2">
           {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </header>
 
-      <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-[#002D62] text-white flex flex-col shadow-xl transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:h-screen print:hidden`}>
-        <div className="p-8 border-b border-blue-900/50">
+      <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-[#047857] text-white flex flex-col shadow-xl transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:h-screen print:hidden`}>
+        <div className="p-8 border-b border-emerald-900/50">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-[#002D62] font-black text-xl shadow-inner">LH</div>
-            <h1 className="text-xl font-bold tracking-tight text-white">Water Quality</h1>
+            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-[#047857] font-black text-xl shadow-inner">LH</div>
+            <h1 className="text-xl font-bold tracking-tight text-white">ENVI-Follow</h1>
           </div>
-          <p className="text-blue-300 text-[10px] uppercase tracking-widest font-semibold">Monitoring System</p>
+          <p className="text-emerald-300 text-[10px] uppercase tracking-widest font-semibold">Environmental Monitoring</p>
         </div>
         <nav className="flex-1 p-6 space-y-2">
           <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => handleTabChange('dashboard')} />
@@ -190,7 +190,7 @@ export default function App() {
           <NavItem icon={<FileText size={20} />} label="รายงานรายเดือน" active={activeTab === 'report'} onClick={() => handleTabChange('report')} isLocked={!isAuthorized} />
           <NavItem icon={<SettingsIcon size={20} />} label="ตั้งค่าผู้ใช้งาน" active={activeTab === 'settings'} onClick={() => handleTabChange('settings')} isLocked={!isAuthorized} />
         </nav>
-        <div className="p-6 bg-blue-950/40 text-[10px] text-blue-400 border-t border-blue-900/50 italic flex flex-col gap-1">
+        <div className="p-6 bg-emerald-950/40 text-[10px] text-emerald-400 border-t border-emerald-900/50 italic flex flex-col gap-1">
           <div className="flex justify-between items-center mb-1">
             <span className="flex items-center gap-1">
               <Database size={12}/> {syncStatus === 'success' ? 'ออนไลน์ (ข้อมูลแชร์กับทุกคน)' : syncStatus === 'error' ? 'ออฟไลน์ (เชื่อมต่อชีตไม่ได้)' : 'กำลังเชื่อมต่อ...'}
@@ -205,15 +205,15 @@ export default function App() {
       {showPasswordInput && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-4">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
-            <div className="w-16 h-16 bg-blue-50 text-[#002D62] rounded-full flex items-center justify-center mb-6 mx-auto shadow-inner"><Lock size={32} /></div>
+            <div className="w-16 h-16 bg-emerald-50 text-[#047857] rounded-full flex items-center justify-center mb-6 mx-auto shadow-inner"><Lock size={32} /></div>
             <h3 className="text-xl font-bold text-center text-gray-800 mb-2">พื้นที่ส่วนบุคคล</h3>
             <p className="text-center text-gray-500 text-sm mb-6">กรุณากรอกรหัสผ่านเพื่อเข้าถึงหน้านี้</p>
             <form onSubmit={checkPassword} className="space-y-4">
-              <input autoFocus type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="ระบุรหัสผ่าน" className={`w-full p-4 text-center text-2xl tracking-[1em] rounded-2xl border-2 outline-none transition-all ${passError ? 'border-red-500 bg-red-50 text-red-600' : 'border-gray-100 bg-gray-50 focus:border-[#002D62]'}`} />
+              <input autoFocus type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="ระบุรหัสผ่าน" className={`w-full p-4 text-center text-2xl tracking-[1em] rounded-2xl border-2 outline-none transition-all ${passError ? 'border-red-500 bg-red-50 text-red-600' : 'border-gray-100 bg-gray-50 focus:border-[#047857]'}`} />
               {passError && <p className="text-red-500 text-xs text-center font-bold">รหัสผ่านไม่ถูกต้อง</p>}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowPasswordInput(false)} className="flex-1 py-3 text-sm font-bold text-gray-400">ยกเลิก</button>
-                <button type="submit" className="flex-1 py-3 bg-[#002D62] text-white rounded-xl font-bold shadow-lg">ยืนยัน</button>
+                <button type="submit" className="flex-1 py-3 bg-[#047857] text-white rounded-xl font-bold shadow-lg">ยืนยัน</button>
               </div>
             </form>
           </div>
@@ -223,8 +223,8 @@ export default function App() {
       <main className="flex-1 p-4 md:p-10 w-full overflow-x-hidden print:p-0 print:bg-white relative">
         {isLoading && (
           <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
-             <Loader2 size={40} className="animate-spin text-[#002D62] mb-4" />
-             <p className="text-[#002D62] font-bold">กำลังดึงข้อมูลจาก Google Sheets...</p>
+             <Loader2 size={40} className="animate-spin text-[#047857] mb-4" />
+             <p className="text-[#047857] font-bold">กำลังดึงข้อมูลจาก Google Sheets...</p>
           </div>
         )}
         
@@ -252,8 +252,8 @@ export default function App() {
       </main>
 
       <style dangerouslySetInnerHTML={{ __html: `
-        @media print { body { background: white !important; } .print-hidden { display: none !important; } .print-only { display: block !important; } @page { margin: 1cm; } }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; } .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #002D62; border-radius: 10px; }
+        @media print { @page { size: landscape; margin: 1cm; } body { background: white !important; zoom: 0.9; } .print-hidden { display: none !important; } .print-only { display: block !important; } @page { margin: 1cm; } }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; } .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #047857; border-radius: 10px; }
       `}} />
     </div>
   );
@@ -261,7 +261,7 @@ export default function App() {
 
 function NavItem({ icon, label, active, onClick, isLocked }) {
   return (
-    <button onClick={onClick} className={`w-full flex items-center justify-between gap-4 px-5 py-3 rounded-xl transition-all ${active ? 'bg-blue-700 text-white shadow-lg ring-1 ring-blue-500/50' : 'text-blue-100 hover:bg-blue-800/50'}`}>
+    <button onClick={onClick} className={`w-full flex items-center justify-between gap-4 px-5 py-3 rounded-xl transition-all ${active ? 'bg-emerald-600 text-white shadow-lg ring-1 ring-emerald-500/50' : 'text-emerald-100 hover:bg-emerald-800/50'}`}>
       <div className="flex items-center gap-4">{icon}<span className="font-semibold text-base">{label}</span></div>
       {isLocked && <Lock size={14} className="opacity-40" />}
     </button>
@@ -329,24 +329,24 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h2 className="text-2xl md:text-3xl font-bold text-[#002D62]">ภาพรวมคุณภาพน้ำ</h2>
+        <h2 className="text-2xl md:text-3xl font-bold text-[#047857]">ภาพรวมคุณภาพน้ำ</h2>
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <div className="flex gap-2 w-full sm:w-auto">
-            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 sm:flex-none p-2 rounded-lg border-gray-200 bg-white border text-sm font-semibold outline-none focus:border-[#002D62] shadow-sm">
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 sm:flex-none p-2 rounded-lg border-gray-200 bg-white border text-sm font-semibold outline-none focus:border-[#047857] shadow-sm">
               {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
             </select>
-            <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="flex-1 sm:flex-none p-2 rounded-lg border-gray-200 bg-white border text-sm font-semibold outline-none focus:border-[#002D62] shadow-sm">
+            <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="flex-1 sm:flex-none p-2 rounded-lg border-gray-200 bg-white border text-sm font-semibold outline-none focus:border-[#047857] shadow-sm">
               {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           <div className="flex bg-white rounded-lg shadow-sm border p-1 w-full sm:w-auto">
-            {[3, 6].map(m => (<button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-bold ${period === m ? 'bg-[#002D62] text-white' : 'text-gray-500'}`}>กราฟ {m} เดือน</button>))}
+            {[3, 6].map(m => (<button key={m} onClick={() => setPeriod(m)} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-bold ${period === m ? 'bg-[#047857] text-white' : 'text-gray-500'}`}>กราฟ {m} เดือน</button>))}
           </div>
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <StatCard title={`โครงการที่ตรวจ (${months[selectedMonth]})`} value={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<LayoutDashboard className="text-[#002D62]" />} color="border-[#002D62]" />
-        <StatCard title={`บ่อบำบัดที่ตรวจ (${months[selectedMonth]})`} value={stats.totalInspections} description={`จำนวนครั้งที่บันทึกผล`} icon={<ClipboardList className="text-blue-500" />} color="border-blue-500" />
+        <StatCard title={`โครงการที่ตรวจ (${months[selectedMonth]})`} value={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<LayoutDashboard className="text-[#047857]" />} color="border-[#047857]" />
+        <StatCard title={`บ่อบำบัดที่ตรวจ (${months[selectedMonth]})`} value={stats.totalInspections} description={`จำนวนครั้งที่บันทึกผล`} icon={<ClipboardList className="text-emerald-500" />} color="border-blue-500" />
         <StatCard title={`โครงการที่ไม่ผ่าน (${months[selectedMonth]})`} value={stats.failedCount} total={stats.uniqueLocations} description={`นับตามจำนวนโครงการ`} icon={<AlertCircle className="text-red-500" />} color="border-red-500" />
         <StatCard 
           title="เซิร์ฟเวอร์ (Sheets)" 
@@ -357,8 +357,8 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
         />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
-        <ChartBox title={`แนวโน้มค่าเฉลี่ย pH (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#002D62" yDomain={[0, 14]} />
-        <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#B8904F" yDomain={[0, 1500]} />
+        <ChartBox title={`แนวโน้มค่าเฉลี่ย pH (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#047857" yDomain={[0, 14]} />
+        <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#10B981" yDomain={[0, 1500]} />
       </div>
     </div>
   );
@@ -410,6 +410,8 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
 function ReportView({ logs, sheetUrl }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedRecorder, setSelectedRecorder] = useState('All');
+  const uniqueRecorders = useMemo(() => ['All', ...new Set(logs.map(l => l.recorder).filter(Boolean))], [logs]);
   
   const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
@@ -417,9 +419,11 @@ function ReportView({ logs, sheetUrl }) {
     return logs.filter(l => { 
       const d = new Date(l.date); 
       if(isNaN(d.getTime())) return false; 
-      return d.getMonth() === parseInt(selectedMonth) && d.getFullYear() === parseInt(selectedYear); 
+      const matchMonth = d.getMonth() === parseInt(selectedMonth) && d.getFullYear() === parseInt(selectedYear);
+      const matchRecorder = selectedRecorder === 'All' || l.recorder === selectedRecorder;
+      return matchMonth && matchRecorder;
     });
-  }, [logs, selectedMonth, selectedYear]);
+  }, [logs, selectedMonth, selectedYear, selectedRecorder]);
 
   // คำนวณสรุปผล สำหรับ PDF (นับตามบ่อ)
   const printUniqueLocations = new Set(filteredLogs.map(l => l.location ? l.location.trim() : "").filter(Boolean)).size;
@@ -434,42 +438,47 @@ function ReportView({ logs, sheetUrl }) {
     <div className="space-y-6 animate-in fade-in duration-500 relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 print:hidden">
         <div>
-          <h2 className="text-2xl font-bold text-[#002D62]">รายงานสรุปคุณภาพน้ำ</h2>
+          <h2 className="text-2xl font-bold text-[#047857]">รายงานสรุปคุณภาพน้ำ</h2>
           <p className="text-sm text-gray-500">ข้อมูลจะบันทึกลงตาราง Google Sheets ทุกครั้งที่มีการกรอกผล</p>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
-          <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 p-2.5 rounded-xl border-gray-200 bg-slate-50 border text-sm font-semibold outline-none focus:border-[#002D62]">
-            {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <select value={selectedRecorder} onChange={e => setSelectedRecorder(e.target.value)} className="flex-1 p-2.5 rounded-xl border-gray-200 bg-slate-50 border text-sm font-semibold outline-none focus:border-[#047857]">
+            {uniqueRecorders.map((r, i) => <option key={i} value={r}>{r === 'All' ? 'ผู้บันทึกทั้งหมด' : r}</option>)}
           </select>
-          <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="flex-1 p-2.5 rounded-xl border-gray-200 bg-slate-50 border text-sm font-semibold outline-none focus:border-[#002D62]">
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <div className="flex gap-3">
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 p-2.5 rounded-xl border-gray-200 bg-slate-50 border text-sm font-semibold outline-none focus:border-[#047857]">
+              {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
+            <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="flex-1 p-2.5 rounded-xl border-gray-200 bg-slate-50 border text-sm font-semibold outline-none focus:border-[#047857]">
+              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
       {/* --- ส่วนหัวรายงานสำหรับหน้า PDF สไตล์ Land and Houses --- */}
       <div className="hidden print:block mb-8">
-        <div className="flex justify-between items-end border-b-4 border-[#B8904F] pb-4 mb-6">
+        <div className="flex justify-between items-end border-b-4 border-[#10B981] pb-4 mb-6">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-[#002D62] rounded-xl flex items-center justify-center border-2 border-[#B8904F]">
+            <div className="w-16 h-16 bg-[#047857] rounded-xl flex items-center justify-center border-2 border-[#10B981]">
               <span className="text-white font-black text-3xl">LH</span>
             </div>
             <div>
-              <h1 className="text-2xl font-black text-[#002D62] uppercase tracking-wide">รายงานผลการตรวจคุณภาพน้ำเสีย</h1>
+              <h1 className="text-2xl font-black text-[#047857] uppercase tracking-wide">รายงานผลการตรวจคุณภาพน้ำเสีย</h1>
               <p className="text-lg font-bold text-gray-600 mt-1">ประจำเดือน {months[selectedMonth]} พ.ศ. {parseInt(selectedYear) + 543}</p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-sm font-bold text-[#002D62] mb-1">โครงการในเครือ Land and Houses</p>
+            <p className="text-sm font-bold text-[#047857] mb-1">ENVI-Follow System</p>
             <p className="text-xs text-gray-500">พิมพ์เมื่อ: {new Date().toLocaleDateString('th-TH')} {new Date().toLocaleTimeString('th-TH')}</p>
           </div>
         </div>
         
         {/* กล่องสรุป 4 หัวข้อใหม่ สำหรับ PDF */}
         <div className="grid grid-cols-4 gap-4 mb-4">
-          <div className="border border-[#002D62] rounded-xl p-3 text-center bg-white shadow-sm">
+          <div className="border border-[#047857] rounded-xl p-3 text-center bg-white shadow-sm">
             <p className="text-[11px] font-bold text-gray-500 uppercase mb-1">โครงการที่ตรวจ</p>
-            <p className="text-2xl font-black text-[#002D62]">{printUniqueLocations} <span className="text-xs text-gray-400 font-medium">แห่ง</span></p>
+            <p className="text-2xl font-black text-[#047857]">{printUniqueLocations} <span className="text-xs text-gray-400 font-medium">แห่ง</span></p>
           </div>
           <div className="border border-blue-400 rounded-xl p-3 text-center bg-white shadow-sm">
             <p className="text-[11px] font-bold text-gray-500 uppercase mb-1">บ่อบำบัดที่ตรวจ</p>
@@ -488,7 +497,7 @@ function ReportView({ logs, sheetUrl }) {
       {/* ---------------------------------------------------- */}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
-        <button onClick={() => window.print()} className="flex items-center justify-center gap-3 bg-[#002D62] text-white p-4 rounded-2xl font-bold shadow-lg hover:bg-[#003d82] transition-all">
+        <button onClick={() => window.print()} className="flex items-center justify-center gap-3 bg-[#047857] text-white p-4 rounded-2xl font-bold shadow-lg hover:bg-[#065f46] transition-all">
           <Printer size={20} /> พิมพ์ (PDF)
         </button>
         <button onClick={() => {
@@ -498,12 +507,12 @@ function ReportView({ logs, sheetUrl }) {
           const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a"); link.href = url; link.download = `Report_${months[selectedMonth]}_${selectedYear}.csv`; link.click();
-        }} className="flex items-center justify-center gap-3 bg-[#B8904F] text-white p-4 rounded-2xl font-bold shadow-lg hover:bg-[#a67d3e] transition-all">
+        }} className="flex items-center justify-center gap-3 bg-[#10B981] text-white p-4 rounded-2xl font-bold shadow-lg hover:bg-[#059669] transition-all">
           <Download size={20} /> ส่งออก (CSV)
         </button>
         
         <button onClick={() => window.open(sheetUrl, '_blank')} className="flex items-center justify-center gap-3 bg-white border-2 border-dashed border-gray-300 text-gray-600 p-4 rounded-2xl font-bold hover:bg-gray-50 transition-all shadow-sm">
-          <Database size={20} className="text-[#002D62]" /> 
+          <Database size={20} className="text-[#047857]" /> 
           <span>จัดการข้อมูลในชีต</span>
         </button>
 
@@ -516,32 +525,36 @@ function ReportView({ logs, sheetUrl }) {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-gray-100 print:bg-[#002D62] print:border-[#002D62]">
+              <tr className="bg-slate-50 border-b border-gray-100 print:bg-[#047857] print:border-[#047857]">
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-white print:py-3 whitespace-nowrap">วันที่</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-white print:py-3 whitespace-nowrap">โครงการ / บ่อจุดที่</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap">pH</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap">TDS</th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap hidden sm:table-cell print:table-cell">ผู้บันทึก</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap">สี</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap">กลิ่น</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap hidden xl:table-cell print:table-cell">ผู้บันทึก</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap">สถานะ</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-white print:py-3 whitespace-nowrap">หมายเหตุ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 print:divide-gray-200">
               {filteredLogs.length === 0 ? (
-                <tr><td colSpan="7" className="p-10 text-center text-gray-400 font-medium italic">ยังไม่มีข้อมูลในเดือนนี้</td></tr>
+                <tr><td colSpan="9" className="p-10 text-center text-gray-400 font-medium italic">ยังไม่มีข้อมูลในเดือนนี้</td></tr>
               ) : (
                 filteredLogs.map((l, i) => {
                   const isPassed = (parseFloat(l.ph) >= STANDARDS.ph.min && parseFloat(l.ph) <= STANDARDS.ph.max && parseFloat(l.tds) <= STANDARDS.tds.max);
                   return (
-                    <tr key={i} className="hover:bg-blue-50/30 transition-colors print:hover:bg-transparent print:border-b print:border-gray-300">
+                    <tr key={i} className="hover:bg-emerald-50/30 transition-colors print:hover:bg-transparent print:border-b print:border-gray-300">
                       <td className="p-4 text-sm font-semibold text-gray-700 print:text-black whitespace-nowrap">{l.date}</td>
                       <td className="p-4 text-sm text-gray-600 print:text-black">
                         <span className="font-bold">{l.location}</span> 
-                        {l.poolNo && <span className="ml-2 text-xs font-bold text-[#B8904F] bg-amber-50 px-2 py-0.5 rounded border border-amber-100 print:bg-transparent print:border-[#B8904F] print:text-[#B8904F]">บ่อที่ {l.poolNo}</span>}
+                        {l.poolNo && <span className="ml-2 text-xs font-bold text-[#10B981] bg-amber-50 px-2 py-0.5 rounded border border-amber-100 print:bg-transparent print:border-[#10B981] print:text-[#10B981]">บ่อที่ {l.poolNo}</span>}
                       </td>
                       <td className="p-4 text-sm text-center font-mono print:text-black">{l.ph}</td>
                       <td className="p-4 text-sm text-center font-mono print:text-black">{l.tds}</td>
-                      <td className="p-4 text-sm text-center text-gray-600 print:text-black hidden sm:table-cell print:table-cell truncate max-w-[100px]">{l.recorder || '-'}</td>
+                      <td className="p-4 text-sm text-center print:text-black">{l.color || '-'}</td>
+                      <td className="p-4 text-sm text-center print:text-black">{l.odor || '-'}</td>
+                      <td className="p-4 text-sm text-center text-gray-600 print:text-black hidden xl:table-cell print:table-cell truncate max-w-[100px]">{l.recorder || '-'}</td>
                       <td className="p-4 text-center">
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase whitespace-nowrap ${isPassed ? 'bg-green-100 text-green-700 print:bg-transparent print:border print:border-green-600 print:text-green-700' : 'bg-red-100 text-red-700 print:bg-transparent print:border print:border-red-600 print:text-red-700'}`}>
                           {isPassed ? 'ผ่าน' : 'ตกเกณฑ์'}
@@ -637,48 +650,48 @@ function EntryForm({ onSubmit, staffData }) {
   return (
     <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-4 duration-500">
       <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
-        <div className="bg-[#002D62] p-8 md:p-10 text-white flex justify-between items-center">
+        <div className="bg-[#047857] p-8 md:p-10 text-white flex justify-between items-center">
           <div>
-            <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3"><PlusCircle size={28} className="text-[#B8904F]" /> บันทึกผลการตรวจคุณภาพน้ำ</h2>
-            <p className="text-blue-200 mt-1 opacity-80 text-xs md:text-sm">ข้อมูลบันทึกและแชร์ให้ทุกคนเห็นอัตโนมัติผ่าน Google Sheets</p>
+            <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3"><PlusCircle size={28} className="text-[#10B981]" /> บันทึกผลการตรวจคุณภาพน้ำ</h2>
+            <p className="text-emerald-200 mt-1 opacity-80 text-xs md:text-sm">ข้อมูลบันทึกและแชร์ให้ทุกคนเห็นอัตโนมัติผ่าน Google Sheets</p>
           </div>
           <ClipboardList size={48} className="opacity-20 hidden sm:block" />
         </div>
         <form onSubmit={handleSubmit} className="p-6 md:p-10 space-y-8 md:space-y-10">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <FormField label="วันที่ตรวจสอบ">
-              <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-medium" required />
+              <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#047857] outline-none font-medium" required />
             </FormField>
             
             <FormField label="เจ้าหน้าที่ผู้ตรวจ">
-              <select name="recorder" value={formData.recorder} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-bold">
+              <select name="recorder" value={formData.recorder} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#047857] outline-none font-bold">
                 {staffData && staffData.length > 0 ? staffData.map(s => <option key={s.name} value={s.name}>{s.name}</option>) : <option value="">กำลังโหลด...</option>}
               </select>
             </FormField>
 
             <FormField label="โครงการ">
               {availableProjects.length > 0 ? (
-                <select name="location" value={formData.location} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-bold" required>
+                <select name="location" value={formData.location} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#047857] outline-none font-bold" required>
                   {availableProjects.map(proj => <option key={proj} value={proj}>{proj}</option>)}
                 </select>
               ) : (
-                <input type="text" name="location" value={formData.location} onChange={handleChange} placeholder="ระบุชื่อโครงการ" className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-medium" required />
+                <input type="text" name="location" value={formData.location} onChange={handleChange} placeholder="ระบุชื่อโครงการ" className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#047857] outline-none font-medium" required />
               )}
             </FormField>
             
             <FormField label="บ่อบำบัดจุดที่">
-              <select name="poolNo" value={formData.poolNo} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#002D62] outline-none font-bold text-center">
+              <select name="poolNo" value={formData.poolNo} onChange={handleChange} className="w-full p-3.5 rounded-xl border-gray-200 bg-slate-50 border focus:ring-2 focus:ring-[#047857] outline-none font-bold text-center">
                 {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </FormField>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 bg-blue-50/40 p-6 md:p-8 rounded-3xl border border-blue-100 shadow-inner">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 bg-emerald-50/40 p-6 md:p-8 rounded-3xl border border-emerald-100 shadow-inner">
             <FormField label={`ค่า pH (เกณฑ์ 5.5 - 9.0)`} alert={alerts.ph}>
-              <input type="number" step="0.1" name="ph" value={formData.ph} onChange={handleChange} className={`w-full p-4 rounded-2xl border transition-all text-xl font-black shadow-sm ${alerts.ph ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white focus:ring-2 focus:ring-[#002D62]'}`} required />
+              <input type="number" step="0.1" name="ph" value={formData.ph} onChange={handleChange} className={`w-full p-4 rounded-2xl border transition-all text-xl font-black shadow-sm ${alerts.ph ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white focus:ring-2 focus:ring-[#047857]'}`} required />
             </FormField>
             <FormField label={`ค่า TDS (เกณฑ์ไม่เกิน 1,000 mg/L)`} alert={alerts.tds}>
-              <input type="number" name="tds" value={formData.tds} onChange={handleChange} className={`w-full p-4 rounded-2xl border transition-all text-xl font-black shadow-sm ${alerts.tds ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white focus:ring-2 focus:ring-[#002D62]'}`} required />
+              <input type="number" name="tds" value={formData.tds} onChange={handleChange} className={`w-full p-4 rounded-2xl border transition-all text-xl font-black shadow-sm ${alerts.tds ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white focus:ring-2 focus:ring-[#047857]'}`} required />
             </FormField>
           </div>
 
@@ -695,12 +708,12 @@ function EntryForm({ onSubmit, staffData }) {
                 onChange={handleChange} 
                 rows="3"
                 placeholder="ระบุความผิดปกติ หรือข้อเสนอแนะเพิ่มเติม..." 
-                className="w-full p-4 rounded-2xl border border-gray-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002D62] outline-none font-medium resize-none"
+                className="w-full p-4 rounded-2xl border border-gray-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#047857] outline-none font-medium resize-none"
               ></textarea>
             </FormField>
           </div>
 
-          <button type="submit" className="w-full bg-[#002D62] hover:bg-[#003d82] text-white py-5 rounded-2xl font-black text-lg md:text-xl shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3">
+          <button type="submit" className="w-full bg-[#047857] hover:bg-[#065f46] text-white py-5 rounded-2xl font-black text-lg md:text-xl shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3">
             <CheckCircle2 size={24} /> ยืนยันบันทึกผลไปยัง Google Sheets
           </button>
         </form>
@@ -714,7 +727,7 @@ function EntryForm({ onSubmit, staffData }) {
             <p className="text-center text-gray-600 mb-8 leading-relaxed">
               ค่าคุณภาพน้ำที่ระบุ <strong className="text-red-500">อยู่นอกเกณฑ์มาตรฐาน</strong>
               <br/>
-              {isCritical && <span className="text-xs text-[#B8904F] mt-2 block bg-amber-50 p-2 rounded-lg font-bold">⚠️ จะมีการส่งอีเมลแจ้งเตือนวิกฤตไปที่ {STANDARDS.alert_email}</span>}
+              {isCritical && <span className="text-xs text-[#10B981] mt-2 block bg-amber-50 p-2 rounded-lg font-bold">⚠️ จะมีการส่งอีเมลแจ้งเตือนวิกฤตไปที่ {STANDARDS.alert_email}</span>}
             </p>
             <div className="flex gap-4">
               <button type="button" onClick={() => setShowConfirmModal(false)} className="flex-1 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 border">ยกเลิก</button>
@@ -728,7 +741,7 @@ function EntryForm({ onSubmit, staffData }) {
 }
 
 function FormField({ label, children, alert }) { return (<div className="space-y-2"><label className="block text-xs font-bold text-gray-400 uppercase tracking-widest">{label}</label>{children}{alert && <p className="text-red-500 text-[10px] font-bold flex items-center gap-1.5 animate-pulse italic"><AlertCircle size={12}/> {alert}</p>}</div>); }
-function RadioBox({ label, name, options, value, onChange }) { return (<div className="space-y-4"><label className="block text-xs font-bold text-gray-400 uppercase tracking-widest">{label}</label><div className="grid grid-cols-3 gap-2">{options.map(opt => (<label key={opt} className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 cursor-pointer transition-all ${value === opt ? 'bg-[#002D62] border-[#002D62] text-white shadow-lg scale-105' : 'bg-white border-gray-100 text-gray-400 hover:border-blue-200 hover:text-blue-500'}`}><input type="radio" name={name} value={opt} checked={value === opt} onChange={onChange} className="hidden" /><span className="text-[11px] md:text-sm font-bold text-center leading-tight">{opt}</span></label>))}</div></div>); }
+function RadioBox({ label, name, options, value, onChange }) { return (<div className="space-y-4"><label className="block text-xs font-bold text-gray-400 uppercase tracking-widest">{label}</label><div className="grid grid-cols-3 gap-2">{options.map(opt => (<label key={opt} className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 cursor-pointer transition-all ${value === opt ? 'bg-[#047857] border-[#047857] text-white shadow-lg scale-105' : 'bg-white border-gray-100 text-gray-400 hover:border-blue-200 hover:text-emerald-500'}`}><input type="radio" name={name} value={opt} checked={value === opt} onChange={onChange} className="hidden" /><span className="text-[11px] md:text-sm font-bold text-center leading-tight">{opt}</span></label>))}</div></div>); }
 
 // --- Settings View Component ---
 function SettingsView({ settings, onUpdateStaff }) {
@@ -748,18 +761,18 @@ function SettingsView({ settings, onUpdateStaff }) {
   return (
     <div className="max-w-3xl mx-auto space-y-6 md:space-y-8 animate-in fade-in duration-500">
       <div className="bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-gray-100">
-        <h2 className="text-xl md:text-2xl font-bold text-[#002D62] mb-8 flex items-center gap-3"><User size={32} className="text-[#B8904F]" /> จัดการรายชื่อเจ้าหน้าที่และโครงการ</h2>
+        <h2 className="text-xl md:text-2xl font-bold text-[#047857] mb-8 flex items-center gap-3"><User size={32} className="text-[#10B981]" /> จัดการรายชื่อเจ้าหน้าที่และโครงการ</h2>
         
         <div className="flex flex-col gap-4 mb-8 bg-slate-50 p-6 rounded-2xl border border-gray-200">
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">ชื่อ-นามสกุล เจ้าหน้าที่</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="เช่น สมชาย ใจดี" className="w-full p-3 rounded-xl border-gray-200 bg-white border focus:ring-2 focus:ring-[#002D62] outline-none font-medium shadow-sm" />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="เช่น สมชาย ใจดี" className="w-full p-3 rounded-xl border-gray-200 bg-white border focus:ring-2 focus:ring-[#047857] outline-none font-medium shadow-sm" />
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">รายชื่อโครงการที่รับผิดชอบ (คั่นด้วยเครื่องหมายจุลภาค ,)</label>
-            <input value={projects} onChange={e => setProjects(e.target.value)} placeholder="เช่น โครงการ A, โครงการ B, โครงการ C" className="w-full p-3 rounded-xl border-gray-200 bg-white border focus:ring-2 focus:ring-[#002D62] outline-none font-medium shadow-sm" />
+            <input value={projects} onChange={e => setProjects(e.target.value)} placeholder="เช่น โครงการ A, โครงการ B, โครงการ C" className="w-full p-3 rounded-xl border-gray-200 bg-white border focus:ring-2 focus:ring-[#047857] outline-none font-medium shadow-sm" />
           </div>
-          <button onClick={handleAddStaff} className="mt-2 bg-[#B8904F] text-white px-8 py-3 rounded-xl font-black hover:shadow-lg transition-all">เพิ่มเข้าระบบ</button>
+          <button onClick={handleAddStaff} className="mt-2 bg-[#10B981] text-white px-8 py-3 rounded-xl font-black hover:shadow-lg transition-all">เพิ่มเข้าระบบ</button>
         </div>
 
         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
@@ -778,10 +791,10 @@ function SettingsView({ settings, onUpdateStaff }) {
           )}
         </div>
       </div>
-      <div className="bg-[#002D62] text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden">
+      <div className="bg-[#047857] text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden">
         <div className="relative z-10">
-          <h3 className="text-lg font-bold mb-3 flex items-center gap-2 text-[#B8904F]"><AlertCircle size={20}/> ระบบแจ้งเตือนพิเศษ</h3>
-          <p className="text-blue-100 text-xs md:text-sm opacity-90 leading-relaxed">
+          <h3 className="text-lg font-bold mb-3 flex items-center gap-2 text-[#10B981]"><AlertCircle size={20}/> ระบบแจ้งเตือนพิเศษ</h3>
+          <p className="text-emerald-100 text-xs md:text-sm opacity-90 leading-relaxed">
             หากค่า pH {'<'} 5 หรือ {'>'} 9 หรือ TDS {'>'} 1,000 <br className="hidden md:block"/>
             ระบบจะส่งแจ้งเตือนไปที่: <span className="font-bold underline text-white">kritsanapong@lh.co.th</span> ทันที
           </p>
