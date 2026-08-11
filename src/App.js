@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { 
   LayoutDashboard, ClipboardList, Settings as SettingsIcon, PlusCircle, AlertCircle, CheckCircle2, 
-  XCircle, User, FileText, Download, Share2, Menu, X, Printer, Lock, Loader2, Database, RefreshCw, AlertTriangle
+  XCircle, User, FileText, Download, Share2, Menu, X, Printer, Lock, Loader2, Database, RefreshCw, AlertTriangle, Edit2, Trash2, Save
 } from 'lucide-react';
 
 // ----------------------------------------------------------------------
@@ -102,6 +102,7 @@ export default function App() {
 
     const newLogEntry = {
       ...formData,
+      id: Date.now().toString(),
       status: isPassedNormal ? "ผ่านเกณฑ์" : "ไม่ผ่านเกณฑ์",
       critical_alert: needsCriticalAlert,
     };
@@ -122,6 +123,45 @@ export default function App() {
       console.error(err);
       alert("ไม่สามารถอัปโหลดข้อมูลขึ้น Cloud ได้ ข้อมูลถูกบันทึกไว้ในเครื่องนี้แล้ว");
     }
+  };
+
+  const handleDeleteLog = async (logToDelete) => {
+    if (!window.confirm("คุณต้องการลบข้อมูลนี้ใช่หรือไม่?")) return;
+    const newLogs = logs.filter(l => l !== logToDelete);
+    setLogs(newLogs);
+    localStorage.setItem('waterQC_LogsCache', JSON.stringify(newLogs));
+    
+    try {
+      await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+        method: 'POST', mode: 'no-cors', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', originalData: logToDelete })
+      });
+    } catch (err) { console.error(err); }
+  };
+
+  const handleEditLog = async (oldLog, newLogData) => {
+    const phVal = parseFloat(newLogData.ph);
+    const tdsVal = parseFloat(newLogData.tds);
+    const isPassedNormal = (phVal >= STANDARDS.ph.min && phVal <= STANDARDS.ph.max && tdsVal <= STANDARDS.tds.max);
+    
+    const updatedLog = {
+      ...oldLog,
+      ...newLogData,
+      status: isPassedNormal ? "ผ่านเกณฑ์" : "ไม่ผ่านเกณฑ์",
+    };
+
+    const newLogs = logs.map(l => l === oldLog ? updatedLog : l);
+    setLogs(newLogs);
+    localStorage.setItem('waterQC_LogsCache', JSON.stringify(newLogs));
+
+    try {
+      await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+        method: 'POST', mode: 'no-cors', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'edit', originalData: oldLog, data: updatedLog })
+      });
+    } catch (err) { console.error(err); }
   };
 
   const updateStaff = async (newStaffData) => {
@@ -246,7 +286,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto">
           {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} hasError={syncStatus === 'error'} />}
           {activeTab === 'form' && <EntryForm onSubmit={handleAddLog} staffData={settings.staffData} />}
-          {activeTab === 'report' && <ReportView logs={logs} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} />}
+          {activeTab === 'report' && <ReportView logs={logs} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} onDelete={handleDeleteLog} onEdit={handleEditLog} />}
           {activeTab === 'settings' && <SettingsView settings={settings} onUpdateStaff={updateStaff} />}
         </div>
       </main>
@@ -407,10 +447,12 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
 }
 
 // --- Report View Component ---
-function ReportView({ logs, sheetUrl }) {
+function ReportView({ logs, sheetUrl, onDelete, onEdit }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedRecorder, setSelectedRecorder] = useState('All');
+  const [editingLog, setEditingLog] = useState(null);
+  const [editFormData, setEditFormData] = useState(null);
   const uniqueRecorders = useMemo(() => ['All', ...new Set(logs.map(l => l.recorder).filter(Boolean))], [logs]);
   
   const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
@@ -535,6 +577,7 @@ function ReportView({ logs, sheetUrl }) {
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap hidden xl:table-cell print:table-cell">ผู้บันทึก</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:text-white print:py-3 whitespace-nowrap">สถานะ</th>
                 <th className="p-4 text-xs font-bold text-gray-500 uppercase print:text-white print:py-3 whitespace-nowrap">หมายเหตุ</th>
+                <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center print:hidden">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 print:divide-gray-200">
@@ -563,6 +606,12 @@ function ReportView({ logs, sheetUrl }) {
                       <td className="p-4 text-xs text-gray-500 print:text-black max-w-[150px] truncate print:max-w-none print:whitespace-normal">
                         {l.remarks || '-'}
                       </td>
+                      <td className="p-4 text-center print:hidden">
+                        <div className="flex justify-center gap-2">
+                          <button onClick={() => { setEditingLog(l); setEditFormData(l); }} className="p-1.5 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"><Edit2 size={16} /></button>
+                          <button onClick={() => onDelete(l)} className="p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"><Trash2 size={16} /></button>
+                        </div>
+                      </td>
                     </tr>
                   )
                 })
@@ -583,6 +632,29 @@ function ReportView({ logs, sheetUrl }) {
           <p className="font-bold">( ผู้ตรวจสอบ / อนุมัติ )</p>
         </div>
       </div>
+
+      {editingLog && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-4 print:hidden">
+          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-2xl font-bold text-[#047857] mb-6 flex items-center gap-2"><Edit2 /> แก้ไขข้อมูล</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div><label className="text-xs font-bold text-gray-500">วันที่</label><input type="date" value={editFormData.date} onChange={e => setEditFormData({...editFormData, date: e.target.value})} className="w-full p-3 rounded-xl border bg-gray-50" /></div>
+              <div><label className="text-xs font-bold text-gray-500">โครงการ</label><input type="text" value={editFormData.location} onChange={e => setEditFormData({...editFormData, location: e.target.value})} className="w-full p-3 rounded-xl border bg-gray-50" /></div>
+              <div><label className="text-xs font-bold text-gray-500">บ่อที่</label><input type="text" value={editFormData.poolNo} onChange={e => setEditFormData({...editFormData, poolNo: e.target.value})} className="w-full p-3 rounded-xl border bg-gray-50" /></div>
+              <div><label className="text-xs font-bold text-gray-500">ผู้บันทึก</label><input type="text" value={editFormData.recorder} onChange={e => setEditFormData({...editFormData, recorder: e.target.value})} className="w-full p-3 rounded-xl border bg-gray-50" /></div>
+              <div><label className="text-xs font-bold text-gray-500">pH</label><input type="number" step="0.1" value={editFormData.ph} onChange={e => setEditFormData({...editFormData, ph: e.target.value})} className="w-full p-3 rounded-xl border bg-gray-50 font-bold" /></div>
+              <div><label className="text-xs font-bold text-gray-500">TDS</label><input type="number" value={editFormData.tds} onChange={e => setEditFormData({...editFormData, tds: e.target.value})} className="w-full p-3 rounded-xl border bg-gray-50 font-bold" /></div>
+              <div><label className="text-xs font-bold text-gray-500">สี</label><select value={editFormData.color} onChange={e => setEditFormData({...editFormData, color: e.target.value})} className="w-full p-3 rounded-xl border bg-gray-50"><option>ใส</option><option>ขุ่นเล็กน้อย</option><option>ขุ่น</option></select></div>
+              <div><label className="text-xs font-bold text-gray-500">กลิ่น</label><select value={editFormData.odor} onChange={e => setEditFormData({...editFormData, odor: e.target.value})} className="w-full p-3 rounded-xl border bg-gray-50"><option>ไม่มีกลิ่น</option><option>มีกลิ่นเล็กน้อย</option><option>มีกลิ่น</option></select></div>
+              <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500">หมายเหตุ</label><input type="text" value={editFormData.remarks} onChange={e => setEditFormData({...editFormData, remarks: e.target.value})} className="w-full p-3 rounded-xl border bg-gray-50" /></div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setEditingLog(null)} className="flex-1 py-3 text-gray-500 font-bold bg-gray-100 rounded-xl hover:bg-gray-200">ยกเลิก</button>
+              <button onClick={() => { onEdit(editingLog, editFormData); setEditingLog(null); }} className="flex-1 py-3 bg-[#047857] text-white font-bold rounded-xl hover:bg-[#065f46]">บันทึกการแก้ไข</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
