@@ -40,6 +40,7 @@ export default function App() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [pendingTab, setPendingTab] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
   const [password, setPassword] = useState('');
   const [passError, setPassError] = useState(false);
 
@@ -180,7 +181,7 @@ export default function App() {
   };
 
   const handleTabChange = (tabId) => {
-    if ((tabId === 'report' || tabId === 'settings') && !isAuthorized) {
+    if (tabId === 'settings' && !isAuthorized) {
       setPendingTab(tabId);
       setShowPasswordInput(true);
       setIsSidebarOpen(false);
@@ -190,12 +191,24 @@ export default function App() {
     }
   };
 
+  const requireAuth = (action) => {
+    setPendingAction(() => action);
+    setShowPasswordInput(true);
+  };
+
   const checkPassword = (e) => {
     e.preventDefault();
     if (password === '1312') {
       setIsAuthorized(true);
       setShowPasswordInput(false);
-      setActiveTab(pendingTab);
+      if (pendingAction) {
+        pendingAction();
+        setPendingAction(null);
+      }
+      if (pendingTab) {
+        setActiveTab(pendingTab);
+        setPendingTab(null);
+      }
       setPassword('');
       setPassError(false);
     } else {
@@ -227,7 +240,7 @@ export default function App() {
         <nav className="flex-1 p-6 space-y-2">
           <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => handleTabChange('dashboard')} />
           <NavItem icon={<ClipboardList size={20} />} label="บันทึกผลการตรวจ" active={activeTab === 'form'} onClick={() => handleTabChange('form')} />
-          <NavItem icon={<FileText size={20} />} label="รายงานรายเดือน" active={activeTab === 'report'} onClick={() => handleTabChange('report')} isLocked={!isAuthorized} />
+          <NavItem icon={<FileText size={20} />} label="รายงานรายเดือน" active={activeTab === 'report'} onClick={() => handleTabChange('report')} />
           <NavItem icon={<SettingsIcon size={20} />} label="ตั้งค่าผู้ใช้งาน" active={activeTab === 'settings'} onClick={() => handleTabChange('settings')} isLocked={!isAuthorized} />
         </nav>
         <div className="p-6 bg-emerald-950/40 text-[10px] text-emerald-400 border-t border-emerald-900/50 italic flex flex-col gap-1">
@@ -286,7 +299,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto">
           {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} hasError={syncStatus === 'error'} />}
           {activeTab === 'form' && <EntryForm onSubmit={handleAddLog} staffData={settings.staffData} />}
-          {activeTab === 'report' && <ReportView logs={logs} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} onDelete={handleDeleteLog} onEdit={handleEditLog} />}
+          {activeTab === 'report' && <ReportView logs={logs} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} onDelete={handleDeleteLog} onEdit={handleEditLog} isAuthorized={isAuthorized} requireAuth={requireAuth} />}
           {activeTab === 'settings' && <SettingsView settings={settings} onUpdateStaff={updateStaff} />}
         </div>
       </main>
@@ -447,7 +460,7 @@ function ChartBox({ title, data, dataKey, limits, color, yDomain }) {
 }
 
 // --- Report View Component ---
-function ReportView({ logs, sheetUrl, onDelete, onEdit }) {
+function ReportView({ logs, sheetUrl, onDelete, onEdit, isAuthorized, requireAuth }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedRecorder, setSelectedRecorder] = useState('All');
@@ -608,8 +621,20 @@ function ReportView({ logs, sheetUrl, onDelete, onEdit }) {
                       </td>
                       <td className="p-4 text-center print:hidden">
                         <div className="flex justify-center gap-2">
-                          <button onClick={() => { setEditingLog(l); setEditFormData(l); }} className="p-1.5 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"><Edit2 size={16} /></button>
-                          <button onClick={() => onDelete(l)} className="p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"><Trash2 size={16} /></button>
+                          <button onClick={() => {
+                            if (!isAuthorized) {
+                              requireAuth(() => { setEditingLog(l); setEditFormData(l); });
+                            } else {
+                              setEditingLog(l); setEditFormData(l);
+                            }
+                          }} className="p-1.5 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors" title="แก้ไขข้อมูล"><Edit2 size={16} /></button>
+                          <button onClick={() => {
+                            if (!isAuthorized) {
+                              requireAuth(() => onDelete(l));
+                            } else {
+                              onDelete(l);
+                            }
+                          }} className="p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors" title="ลบข้อมูล"><Trash2 size={16} /></button>
                         </div>
                       </td>
                     </tr>
