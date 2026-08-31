@@ -27,6 +27,8 @@ const STANDARDS = {
   alert_email: "kritsanapong@lh.co.th"
 };
 
+const cleanText = (str) => typeof str === 'string' ? str.replace(/[\u200B-\u200D\uFEFF]/g, '').trim() : str;
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [logs, setLogs] = useState([]);
@@ -65,13 +67,15 @@ export default function App() {
       
       if (result && result.status === 'success') {
         if (result.data) {
-          const sortedData = result.data.sort((a, b) => new Date(b.date) - new Date(a.date));
+          const cleanedLogs = result.data.map(l => ({ ...l, recorder: cleanText(l.recorder) }));
+          const sortedData = cleanedLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
           setLogs(sortedData);
           localStorage.setItem('waterQC_LogsCache', JSON.stringify(sortedData));
         }
         if (result.settings && result.settings.staffData) {
-          setSettings({ staffData: result.settings.staffData });
-          localStorage.setItem('waterQC_StaffCache', JSON.stringify({ staffData: result.settings.staffData }));
+          const cleanedStaff = result.settings.staffData.map(s => ({ ...s, name: cleanText(s.name) }));
+          setSettings({ staffData: cleanedStaff });
+          localStorage.setItem('waterQC_StaffCache', JSON.stringify({ staffData: cleanedStaff }));
         }
         setSyncStatus('success');
       } else {
@@ -103,6 +107,8 @@ export default function App() {
 
     const newLogEntry = {
       ...formData,
+      recorder: cleanText(formData.recorder),
+      location: cleanText(formData.location),
       id: Date.now().toString(),
       status: isPassedNormal ? "ผ่านเกณฑ์" : "ไม่ผ่านเกณฑ์",
       critical_alert: needsCriticalAlert,
