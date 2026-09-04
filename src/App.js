@@ -303,7 +303,7 @@ export default function App() {
         )}
 
         <div className="max-w-7xl mx-auto">
-          {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} hasError={syncStatus === 'error'} />}
+          {activeTab === 'dashboard' && <Dashboard logs={logs} period={chartPeriod} setPeriod={setChartPeriod} hasError={syncStatus === 'error'} staffData={settings.staffData} />}
           {activeTab === 'form' && <EntryForm onSubmit={handleAddLog} staffData={settings.staffData} />}
           {activeTab === 'report' && <ReportView logs={logs} sheetUrl={GOOGLE_SHEETS_DIRECT_URL} onDelete={handleDeleteLog} onEdit={handleEditLog} isAuthorized={isAuthorized} requireAuth={requireAuth} />}
           {activeTab === 'settings' && <SettingsView settings={settings} onUpdateStaff={updateStaff} />}
@@ -328,7 +328,7 @@ function NavItem({ icon, label, active, onClick, isLocked }) {
 }
 
 // --- Dashboard Component ---
-function Dashboard({ logs, period, setPeriod, hasError }) {
+function Dashboard({ logs, period, setPeriod, hasError, staffData }) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
@@ -350,6 +350,31 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
     
     return { uniqueLocations, totalInspections, failedCount: uniqueFailedLocations };
   }, [logs, selectedMonth, selectedYear]);
+
+  const trackerData = useMemo(() => {
+    if (!staffData) return [];
+    const monthlyLogs = logs.filter(l => { 
+      const d = new Date(l.date); 
+      if(isNaN(d.getTime())) return false;
+      return d.getMonth() === parseInt(selectedMonth) && d.getFullYear() === parseInt(selectedYear); 
+    });
+    return staffData.map(staff => {
+      const staffLogs = monthlyLogs.filter(l => l.recorder === staff.name);
+      const recordedProjects = new Set(staffLogs.map(l => l.location));
+      const requiredProjects = staff.projects || [];
+      const missingProjects = requiredProjects.filter(p => !recordedProjects.has(p));
+      const recordedCount = requiredProjects.filter(p => recordedProjects.has(p)).length;
+      const totalCount = requiredProjects.length;
+      return {
+        name: staff.name,
+        missingProjects,
+        recordedCount,
+        totalCount,
+        isComplete: totalCount > 0 && missingProjects.length === 0,
+        extraProjects: [...recordedProjects].filter(p => !requiredProjects.includes(p))
+      };
+    }).filter(s => s.totalCount > 0 || s.extraProjects.length > 0).sort((a, b) => a.isComplete === b.isComplete ? 0 : a.isComplete ? 1 : -1);
+  }, [logs, selectedMonth, selectedYear, staffData]);
 
   const chartData = useMemo(() => {
     const endDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59);
@@ -415,6 +440,32 @@ function Dashboard({ logs, period, setPeriod, hasError }) {
           color={hasError ? "border-red-500" : "border-[#16A34A]"} 
         />
       </div>
+
+      <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100">
+        <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2 text-sm sm:text-base"><div className="w-1.5 h-4 rounded-full bg-blue-500"></div>สถานะการบันทึกข้อมูลรายบุคคล ({months[selectedMonth]})</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {trackerData.length === 0 ? <p className="text-sm text-gray-400 italic">ไม่มีข้อมูลเจ้าหน้าที่</p> : trackerData.map((s, idx) => (
+            <div key={idx} className={`p-4 rounded-xl border ${s.isComplete ? 'border-green-200 bg-green-50/50' : 'border-orange-200 bg-orange-50/50'}`}>
+              <div className="flex justify-between items-start mb-2">
+                <span className="font-bold text-gray-800">{s.name}</span>
+                {s.isComplete ? (
+                  <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold flex items-center gap-1"><CheckCircle2 size={12}/> ครบแล้ว</span>
+                ) : (
+                  <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs font-bold flex items-center gap-1"><AlertCircle size={12}/> ขาด {s.missingProjects.length}</span>
+                )}
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3">
+                <div className={`h-1.5 rounded-full ${s.isComplete ? 'bg-green-500' : 'bg-orange-500'}`} style={{ width: `${(s.recordedCount / s.totalCount) * 100}%` }}></div>
+              </div>
+              <p className="text-xs text-gray-600 mb-1">ความคืบหน้า: {s.recordedCount} / {s.totalCount} โครงการ</p>
+              {!s.isComplete && s.missingProjects.length > 0 && (
+                <p className="text-xs text-red-500 mt-2"><span className="font-bold">รอตรวจ:</span> {s.missingProjects.join(', ')}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8">
         <ChartBox title={`แนวโน้มค่าเฉลี่ย pH (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="ph" limits={[STANDARDS.ph.min, STANDARDS.ph.max]} color="#047857" yDomain={[0, 14]} />
         <ChartBox title={`แนวโน้มค่าเฉลี่ย TDS (${period} เดือนย้อนหลัง)`} data={chartData} dataKey="tds" limits={[STANDARDS.tds.max]} color="#10B981" yDomain={[0, 1500]} />
@@ -849,15 +900,51 @@ function RadioBox({ label, name, options, value, onChange }) { return (<div clas
 // --- Settings View Component ---
 function SettingsView({ settings, onUpdateStaff }) {
   const [name, setName] = useState('');
-  const [projects, setProjects] = useState('');
+  const [newProjectInput, setNewProjectInput] = useState({});
 
   const handleAddStaff = () => {
     if (name.trim()) {
-      const projArray = projects.split(',').map(p => p.trim()).filter(Boolean);
       const currentData = settings.staffData || [];
-      onUpdateStaff([...currentData, { name: name.trim(), projects: projArray }]);
-      setName('');
-      setProjects('');
+      if (!currentData.some(s => s.name === name.trim())) {
+        onUpdateStaff([...currentData, { name: name.trim(), projects: [] }]);
+        setName('');
+      } else {
+        alert("มีชื่อนี้ในระบบแล้ว");
+      }
+    }
+  };
+
+  const handleRemoveStaff = (staffName) => {
+    if (window.confirm(`คุณต้องการลบเจ้าหน้าที่ '${staffName}' ใช่หรือไม่?`)) {
+      onUpdateStaff(settings.staffData.filter(x => x.name !== staffName));
+    }
+  };
+
+  const handleAddProject = (staffName) => {
+    const projName = newProjectInput[staffName]?.trim();
+    if (!projName) return;
+    
+    const newData = settings.staffData.map(s => {
+      if (s.name === staffName) {
+        if (!s.projects.includes(projName)) {
+           return { ...s, projects: [...s.projects, projName] };
+        }
+      }
+      return s;
+    });
+    onUpdateStaff(newData);
+    setNewProjectInput({ ...newProjectInput, [staffName]: '' });
+  };
+
+  const handleRemoveProject = (staffName, projectName) => {
+    if (window.confirm(`ต้องการลบโครงการ '${projectName}' ออกจาก '${staffName}' ใช่หรือไม่?`)) {
+      const newData = settings.staffData.map(s => {
+        if (s.name === staffName) {
+          return { ...s, projects: s.projects.filter(p => p !== projectName) };
+        }
+        return s;
+      });
+      onUpdateStaff(newData);
     }
   };
 
@@ -866,29 +953,42 @@ function SettingsView({ settings, onUpdateStaff }) {
       <div className="bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-gray-100">
         <h2 className="text-xl md:text-2xl font-bold text-[#047857] mb-8 flex items-center gap-3"><User size={32} className="text-[#10B981]" /> จัดการรายชื่อเจ้าหน้าที่และโครงการ</h2>
         
-        <div className="flex flex-col gap-4 mb-8 bg-slate-50 p-6 rounded-2xl border border-gray-200">
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">ชื่อ-นามสกุล เจ้าหน้าที่</label>
+        <div className="flex flex-col sm:flex-row gap-4 mb-8 bg-slate-50 p-6 rounded-2xl border border-gray-200 items-end">
+          <div className="flex-1 w-full">
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">เพิ่มเจ้าหน้าที่ใหม่</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="เช่น สมชาย ใจดี" className="w-full p-3 rounded-xl border-gray-200 bg-white border focus:ring-2 focus:ring-[#047857] outline-none font-medium shadow-sm" />
           </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">รายชื่อโครงการที่รับผิดชอบ (คั่นด้วยเครื่องหมายจุลภาค ,)</label>
-            <input value={projects} onChange={e => setProjects(e.target.value)} placeholder="เช่น โครงการ A, โครงการ B, โครงการ C" className="w-full p-3 rounded-xl border-gray-200 bg-white border focus:ring-2 focus:ring-[#047857] outline-none font-medium shadow-sm" />
-          </div>
-          <button onClick={handleAddStaff} className="mt-2 bg-[#10B981] text-white px-8 py-3 rounded-xl font-black hover:shadow-lg transition-all">เพิ่มเข้าระบบ</button>
+          <button onClick={handleAddStaff} className="w-full sm:w-auto bg-[#10B981] text-white px-8 py-3 rounded-xl font-black hover:shadow-lg transition-all flex items-center justify-center gap-2"><PlusCircle size={20}/> เพิ่ม</button>
         </div>
 
-        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+        <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
           {(!settings.staffData || settings.staffData.length === 0) ? (<p className="text-center text-gray-400 py-10 italic">ยังไม่มีรายชื่อเจ้าหน้าที่</p>) : (
             settings.staffData.map((staff, i) => (
-              <div key={i} className="flex justify-between items-center p-5 bg-white rounded-2xl border border-gray-200 group hover:shadow-md transition-all">
-                <div>
-                  <span className="font-bold text-gray-800 block text-lg">{staff.name}</span>
-                  <span className="text-sm text-gray-500 mt-1 block">
-                    โครงการ: {staff.projects && staff.projects.length > 0 ? staff.projects.join(', ') : <span className="italic text-red-400">ไม่ได้ระบุโครงการ</span>}
-                  </span>
+              <div key={i} className="flex flex-col gap-4 p-5 bg-white rounded-2xl border border-gray-200 group hover:border-[#10B981] transition-all">
+                <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                  <span className="font-bold text-gray-800 text-lg flex items-center gap-2"><User size={18} className="text-[#047857]"/> {staff.name}</span>
+                  <button onClick={() => handleRemoveStaff(staff.name)} className="text-red-400 hover:text-red-600 transition-colors p-2 bg-red-50 rounded-lg text-xs font-bold flex items-center gap-1"><Trash2 size={14}/> ลบผู้บันทึก</button>
                 </div>
-                <button onClick={() => onUpdateStaff(settings.staffData.filter(x => x.name !== staff.name))} className="text-red-300 hover:text-white hover:bg-red-500 transition-colors p-3 rounded-xl"><XCircle size={24}/></button>
+                
+                <div className="flex flex-wrap gap-2">
+                  {staff.projects && staff.projects.length > 0 ? staff.projects.map((proj, pIdx) => (
+                    <div key={pIdx} className="bg-emerald-50 border border-emerald-200 text-[#047857] px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-2">
+                      {proj}
+                      <button onClick={() => handleRemoveProject(staff.name, proj)} className="text-emerald-400 hover:text-red-500 hover:bg-red-50 rounded-full p-0.5 transition-colors"><X size={14}/></button>
+                    </div>
+                  )) : <span className="text-sm italic text-gray-400">ยังไม่มีโครงการ</span>}
+                </div>
+
+                <div className="flex gap-2 mt-2">
+                  <input 
+                    value={newProjectInput[staff.name] || ''} 
+                    onChange={e => setNewProjectInput({...newProjectInput, [staff.name]: e.target.value})} 
+                    onKeyPress={e => e.key === 'Enter' && handleAddProject(staff.name)}
+                    placeholder="พิมพ์ชื่อโครงการใหม่..." 
+                    className="flex-1 p-2.5 rounded-lg border-gray-200 bg-slate-50 border focus:ring-1 focus:ring-[#047857] outline-none text-sm font-medium" 
+                  />
+                  <button onClick={() => handleAddProject(staff.name)} className="bg-gray-100 text-gray-600 px-4 rounded-lg font-bold hover:bg-[#10B981] hover:text-white transition-colors text-sm">เพิ่มโครงการ</button>
+                </div>
               </div>
             ))
           )}
